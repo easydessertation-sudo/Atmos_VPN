@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SecureVPN Admin Panel</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #070b14;
+      --surface: #0d1526;
+      --card: #111827;
+      --border: rgba(255,255,255,0.07);
+      --blue: #3b82f6;
+      --cyan: #22d3ee;
+      --purple: #8b5cf6;
+      --green: #10b981;
+      --orange: #f97316;
+      --red: #ef4444;
+      --yellow: #f59e0b;
+      --text: #f1f5f9;
+      --muted: #64748b;
+      --sidebar-w: 240px;
+    }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+    }
+    /* ── Login Screen ── */
+    #login-screen {
+      position: fixed; inset: 0;
+      background: var(--bg);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 999;
+    }
+    .login-box {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: 48px 40px;
+      width: 380px;
+      text-align: center;
+    }
+    .login-box h1 { font-size: 26px; font-weight: 900; margin-bottom: 6px; }
+    .login-box p { color: var(--muted); margin-bottom: 32px; }
+    .login-box input {
+      width: 100%; padding: 14px 16px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; color: var(--text); font-size: 15px;
+      outline: none; margin-bottom: 16px;
+    }
+    .login-box input:focus { border-color: var(--blue); }
+    .btn-primary {
+      width: 100%; padding: 14px;
+      background: linear-gradient(135deg, var(--blue), var(--purple));
+      border: none; border-radius: 12px; color: white;
+      font-weight: 800; font-size: 15px; cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    .btn-primary:hover { opacity: 0.88; }
+    #login-error { color: var(--red); font-size: 13px; margin-top: 12px; display: none; }
+    /* ── App Layout ── */
+    #app { display: none; width: 100%; }
+    /* ── Sidebar ── */
+    .sidebar {
+      width: var(--sidebar-w); min-height: 100vh;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      position: fixed; top: 0; left: 0; bottom: 0;
+      padding: 20px 0;
+    }
+    .sidebar-logo {
+      display: flex; align-items: center; gap: 10px;
+      padding: 12px 20px 24px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 12px;
+    }
+    .sidebar-logo .shield {
+      width: 36px; height: 36px; border-radius: 10px;
+      background: linear-gradient(135deg, var(--blue), var(--purple));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+    }
+    .sidebar-logo span { font-size: 16px; font-weight: 900; }
+    .sidebar-logo small { color: var(--muted); font-size: 11px; display: block; }
+    .nav-item {
+      display: flex; align-items: center; gap: 12px;
+      padding: 11px 20px; cursor: pointer; margin: 2px 10px;
+      border-radius: 12px; color: var(--muted);
+      font-weight: 600; font-size: 14px; text-decoration: none;
+      transition: all 0.15s;
+    }
+    .nav-item:hover { background: rgba(255,255,255,0.05); color: var(--text); }
+    .nav-item.active { background: rgba(59,130,246,0.15); color: var(--blue); }
+    .nav-item .icon { font-size: 18px; width: 22px; text-align: center; }
+    .sidebar-spacer { flex: 1; }
+    .sidebar-user {
+      padding: 16px 20px;
+      border-top: 1px solid var(--border);
+      font-size: 12px; color: var(--muted);
+    }
+    .sidebar-user strong { color: var(--text); font-size: 13px; display: block; margin-bottom: 2px; }
+    /* ── Main Content ── */
+    .main {
+      margin-left: var(--sidebar-w);
+      flex: 1; min-height: 100vh;
+      padding: 32px;
+      background: var(--bg);
+    }
+    .page { display: none; }
+    .page.active { display: block; }
+    .page-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 28px;
+    }
+    .page-header h1 { font-size: 24px; font-weight: 900; }
+    .page-header p { color: var(--muted); font-size: 13px; margin-top: 2px; }
+    /* ── Cards ── */
+    .card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 18px; padding: 24px;
+    }
+    .kpi-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px; margin-bottom: 28px;
+    }
+    .kpi-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 18px; padding: 22px;
+      transition: border-color 0.2s;
+    }
+    .kpi-card:hover { border-color: rgba(59,130,246,0.3); }
+    .kpi-label { font-size: 11px; font-weight: 800; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 12px; }
+    .kpi-value { font-size: 32px; font-weight: 900; margin-bottom: 4px; }
+    .kpi-sub { font-size: 12px; color: var(--muted); }
+    .kpi-icon { font-size: 28px; float: right; margin-top: -4px; }
+    /* ── Tables ── */
+    .table-wrapper { overflow-x: auto; border-radius: 18px; }
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      text-align: left; padding: 12px 16px;
+      font-size: 11px; font-weight: 800; color: var(--muted);
+      letter-spacing: 1px; text-transform: uppercase;
+      border-bottom: 1px solid var(--border);
+    }
+    td {
+      padding: 14px 16px; font-size: 13px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(255,255,255,0.02); }
+    /* ── Badges ── */
+    .badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 3px 10px; border-radius: 20px;
+      font-size: 11px; font-weight: 800; letter-spacing: 0.5px;
+    }
+    .badge-green { background: rgba(16,185,129,0.1); color: var(--green); }
+    .badge-red { background: rgba(239,68,68,0.1); color: var(--red); }
+    .badge-yellow { background: rgba(245,158,11,0.1); color: var(--yellow); }
+    .badge-blue { background: rgba(59,130,246,0.1); color: var(--blue); }
+    .badge-muted { background: rgba(100,116,139,0.1); color: var(--muted); }
+    /* ── Buttons ── */
+    .btn {
+      padding: 8px 16px; border-radius: 10px; border: none;
+      font-weight: 700; font-size: 12px; cursor: pointer; transition: 0.15s;
+      display: inline-flex; align-items: center; gap: 6px;
+    }
+    .btn-sm { padding: 5px 12px; font-size: 11px; }
+    .btn-blue { background: rgba(59,130,246,0.15); color: var(--blue); }
+    .btn-blue:hover { background: rgba(59,130,246,0.3); }
+    .btn-red { background: rgba(239,68,68,0.1); color: var(--red); }
+    .btn-red:hover { background: rgba(239,68,68,0.2); }
+    .btn-green { background: rgba(16,185,129,0.1); color: var(--green); }
+    .btn-green:hover { background: rgba(16,185,129,0.2); }
+    .btn-solid { background: linear-gradient(135deg, var(--blue), var(--purple)); color: white; }
+    .btn-solid:hover { opacity: 0.88; }
+    /* ── Search/Filter bar ── */
+    .filter-bar {
+      display: flex; gap: 12px; align-items: center; margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    .filter-bar input, .filter-bar select {
+      padding: 10px 14px; background: var(--card); border: 1px solid var(--border);
+      border-radius: 10px; color: var(--text); font-size: 13px; outline: none;
+    }
+    .filter-bar input:focus, .filter-bar select:focus { border-color: var(--blue); }
+    .filter-bar input { flex: 1; min-width: 200px; }
+    /* ── Toggle ── */
+    .toggle-label { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+    .toggle-label input[type=checkbox] { display: none; }
+    .toggle-track {
+      width: 44px; height: 24px; border-radius: 12px;
+      background: rgba(255,255,255,0.1); position: relative; transition: 0.2s;
+    }
+    .toggle-label input:checked + .toggle-track { background: var(--blue); }
+    .toggle-thumb {
+      position: absolute; top: 3px; left: 3px;
+      width: 18px; height: 18px; border-radius: 50%;
+      background: white; transition: 0.2s;
+    }
+    .toggle-label input:checked + .toggle-track .toggle-thumb { left: 23px; }
+    /* ── Stats bar ── */
+    .stat-row { display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 20px; }
+    .stat-inline { font-size: 13px; color: var(--muted); }
+    .stat-inline strong { color: var(--text); font-size: 15px; margin-right: 4px; }
+    /* ── Loading spinner ── */
+    .spinner {
+      border: 3px solid rgba(255,255,255,0.1);
+      border-top-color: var(--blue);
+      border-radius: 50%; width: 36px; height: 36px;
+      animation: spin 0.8s linear infinite; margin: 48px auto; display: block;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    /* ── Toast ── */
+    #toast {
+      position: fixed; bottom: 28px; right: 28px;
+      background: var(--card); border: 1px solid var(--border);
+      border-left: 4px solid var(--green);
+      border-radius: 12px; padding: 14px 20px;
+      font-size: 14px; font-weight: 600;
+      z-index: 9999; opacity: 0; transform: translateY(10px);
+      transition: all 0.3s; pointer-events: none;
+    }
+    #toast.show { opacity: 1; transform: translateY(0); }
+    /* ── Settings ── */
+    .settings-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 0; border-bottom: 1px solid var(--border);
+    }
+    .settings-item:last-child { border-bottom: none; }
+    .settings-item label { font-weight: 600; font-size: 14px; }
+    .settings-item p { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .settings-item input[type=number] {
+      width: 80px; padding: 8px; background: var(--surface);
+      border: 1px solid var(--border); border-radius: 8px; color: var(--text);
+      text-align: center; font-size: 14px; font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+
+<!-- Login Screen -->
+<div id="login-screen">
+  <div class="login-box">
+    <div style="font-size:40px; margin-bottom:12px;">🛡️</div>
+    <h1>SecureVPN Admin</h1>
+    <p>Sign in to manage your application</p>
+    <input type="password" id="admin-password" placeholder="Admin password" onkeydown="if(event.key==='Enter')login()" />
+    <button class="btn-primary" onclick="login()">Sign In</button>
+    <p id="login-error">Incorrect password. Try again.</p>
+  </div>
+</div>
+
+<!-- Main App -->
+<div id="app">
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="shield">🛡️</div>
+      <div>
+        <span>SecureVPN</span>
+        <small>Admin Panel</small>
+      </div>
+    </div>
+
+    <a class="nav-item active" data-page="dashboard" onclick="goto('dashboard')"><span class="icon">📊</span> Dashboard</a>
+    <a class="nav-item" data-page="users" onclick="goto('users')"><span class="icon">👥</span> Users</a>
+    <a class="nav-item" data-page="servers" onclick="goto('servers')"><span class="icon">🌐</span> Servers</a>
+    <a class="nav-item" data-page="sessions" onclick="goto('sessions')"><span class="icon">⚡</span> Sessions</a>
+    <a class="nav-item" data-page="tickets" onclick="goto('tickets')"><span class="icon">🎫</span> Support Tickets</a>
+    <a class="nav-item" data-page="settings" onclick="goto('settings')"><span class="icon">⚙️</span> Settings</a>
+
+    <div class="sidebar-spacer"></div>
+    <div class="sidebar-user">
+      <strong>Admin</strong>
+      Connected to localhost:8080
+      <br/><a href="#" onclick="logout()" style="color:var(--red); font-size:12px; margin-top:6px; display:inline-block;">Sign Out</a>
+    </div>
+  </aside>
+
+  <main class="main">
+
+    <!-- DASHBOARD -->
+    <div class="page active" id="page-dashboard">
+      <div class="page-header">
+        <div><h1>Dashboard</h1><p>Live overview of SecureVPN metrics</p></div>
+        <button class="btn btn-blue" onclick="loadDashboard()">🔄 Refresh</button>
+      </div>
+      <div class="kpi-grid" id="kpi-grid"><div class="spinner"></div></div>
+      <div style="margin-top:24px; display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+        <div class="card">
+          <h3 style="font-size:14px; font-weight:800; margin-bottom:16px; color:var(--muted)">USER BREAKDOWN</h3>
+          <div id="user-breakdown" style="font-size:24px; color:var(--muted)">Loading…</div>
+        </div>
+        <div class="card">
+          <h3 style="font-size:14px; font-weight:800; margin-bottom:16px; color:var(--muted)">SERVER STATUS</h3>
+          <div id="server-breakdown" style="font-size:24px; color:var(--muted)">Loading…</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- USERS -->
+    <div class="page" id="page-users">
+      <div class="page-header">
+        <div><h1>Users</h1><p>Manage registered accounts</p></div>
+      </div>
+      <div class="filter-bar">
+        <input type="text" id="user-search" placeholder="🔍  Search by name or email…" oninput="loadUsers()" />
+        <select id="user-plan-filter" onchange="loadUsers()">
+          <option value="">All Plans</option>
+          <option value="free">Free</option>
+          <option value="pro">Pro</option>
+          <option value="family">Family</option>
+          <option value="teams">Teams</option>
+        </select>
+        <button class="btn btn-solid" onclick="loadUsers()">Apply</button>
+      </div>
+      <div class="card table-wrapper">
+        <table>
+          <thead><tr><th>User</th><th>Plan</th><th>Joined</th><th>Sessions</th><th>Actions</th></tr></thead>
+          <tbody id="users-tbody"><tr><td colspan="5"><div class="spinner"></div></td></tr></tbody>
+        </table>
+      </div>
+      <div id="users-pagination" style="margin-top:16px; display:flex; gap:8px; justify-content:flex-end;"></div>
+    </div>
+
+    <!-- SERVERS -->
+    <div class="page" id="page-servers">
+      <div class="page-header">
+        <div><h1>Servers</h1><p>Manage VPN server fleet</p></div>
+        <button class="btn btn-blue" onclick="loadServers()">🔄 Refresh</button>
+      </div>
+      <div class="card table-wrapper">
+        <table>
+          <thead><tr><th>Server</th><th>Country</th><th>Ping</th><th>Capacity</th><th>Features</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody id="servers-tbody"><tr><td colspan="7"><div class="spinner"></div></td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- SESSIONS -->
+    <div class="page" id="page-sessions">
+      <div class="page-header">
+        <div><h1>Sessions</h1><p>Live and historical VPN sessions</p></div>
+        <div style="display:flex; gap:10px;">
+          <button class="btn btn-green" onclick="loadSessions(true)">⚡ Active Only</button>
+          <button class="btn btn-blue" onclick="loadSessions(false)">📋 All Sessions</button>
+        </div>
+      </div>
+      <div class="card table-wrapper">
+        <table>
+          <thead><tr><th>User</th><th>Server</th><th>Mode</th><th>Started</th><th>Duration</th><th>Status</th></tr></thead>
+          <tbody id="sessions-tbody"><tr><td colspan="6"><div class="spinner"></div></td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- TICKETS -->
+    <div class="page" id="page-tickets">
+      <div class="page-header">
+        <div><h1>Support Tickets</h1><p>Manage customer support requests</p></div>
+        <select id="ticket-filter" onchange="loadTickets()" style="padding:8px 14px; background:var(--card); border:1px solid var(--border); border-radius:10px; color:var(--text);">
+          <option value="">All Tickets</option>
+          <option value="open">Open</option>
+          <option value="in_progress">In Progress</option>
+          <option value="closed">Closed</option>
+        </select>
+      </div>
+      <div class="card table-wrapper">
+        <table>
+          <thead><tr><th>Ticket</th><th>Category</th><th>Created</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody id="tickets-tbody"><tr><td colspan="5"><div class="spinner"></div></td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- SETTINGS -->
+    <div class="page" id="page-settings">
+      <div class="page-header">
+        <div><h1>Settings</h1><p>Configure app behaviour</p></div>
+        <button class="btn btn-solid" onclick="saveSettings()">💾 Save Changes</button>
+      </div>
+      <div class="card" id="settings-form"><div class="spinner"></div></div>
+    </div>
+
+  </main>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const API = 'http://localhost:8080/api';
+let adminToken = '';
+let usersPage = 1;
+let currentSettings = {};
+
+// ── Auth ──────────────────────────────────────────────────────────────
+async function login() {
+  const pwd = document.getElementById('admin-password').value;
+  try {
+    const r = await fetch(`${API}/admin/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pwd }),
+    });
+    const d = await r.json();
+    if (d.success) {
+      adminToken = d.data.admin_token;
+      document.getElementById('login-screen').style.display = 'none';
+      document.getElementById('app').style.display = 'flex';
+      loadDashboard();
+    } else {
+      document.getElementById('login-error').style.display = 'block';
+    }
+  } catch {
+    document.getElementById('login-error').textContent = 'Cannot connect to backend. Is it running?';
+    document.getElementById('login-error').style.display = 'block';
+  }
+}
+
+function logout() {
+  adminToken = '';
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('admin-password').value = '';
+}
+
+// ── Navigation ────────────────────────────────────────────────────────
+function goto(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  document.querySelector(`[data-page="${page}"]`).classList.add('active');
+  if (page === 'dashboard') loadDashboard();
+  if (page === 'users') loadUsers();
+  if (page === 'servers') loadServers();
+  if (page === 'sessions') loadSessions(false);
+  if (page === 'tickets') loadTickets();
+  if (page === 'settings') loadSettings();
+}
+
+// ── API Helper ────────────────────────────────────────────────────────
+async function api(path, opts = {}) {
+  const r = await fetch(`${API}/admin${path}`, {
+    ...opts,
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Admin-Token': adminToken,
+      ...(opts.headers || {}),
+    },
+  });
+  return r.json();
+}
+
+function toast(msg, color = '#10b981') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.borderLeftColor = color;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+function fmtDate(s) {
+  if (!s) return '—';
+  const d = new Date(s);
+  return `${d.getDate()}/${d.getMonth()+1}/${d.getFullYear()} ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
+
+function planBadge(plan) {
+  const colors = { free: 'muted', pro: 'blue', family: 'green', teams: 'yellow' };
+  return `<span class="badge badge-${colors[plan]||'muted'}">${(plan||'free').toUpperCase()}</span>`;
+}
+
+// ── Dashboard ────────────────────────────────────────────────────────
+async function loadDashboard() {
+  const d = await api('/stats');
+  if (!d.success) return;
+  const s = d.data;
+  document.getElementById('kpi-grid').innerHTML = `
+    ${kpi('Total Users', s.total_users, '👥', 'var(--blue)')}
+    ${kpi('Active Sessions', s.active_sessions, '⚡', 'var(--green)')}
+    ${kpi('Paid Users', s.paid_users, '⭐', 'var(--yellow)')}
+    ${kpi('Online Servers', s.online_servers, '🌐', 'var(--cyan)')}
+    ${kpi('Open Tickets', s.open_tickets, '🎫', 'var(--orange)')}
+    ${kpi('Revenue (£)', (s.total_revenue_pence/100).toFixed(2), '💰', 'var(--purple)')}
+  `;
+  // User breakdown
+  const freeP = s.total_users > 0 ? Math.round(s.free_users/s.total_users*100) : 0;
+  document.getElementById('user-breakdown').innerHTML = `
+    <div style="display:flex; gap:20px; flex-wrap:wrap;">
+      <div><div style="font-size:32px; font-weight:900; color:var(--blue)">${s.free_users}</div><div style="color:var(--muted); font-size:13px;">Free Users</div></div>
+      <div><div style="font-size:32px; font-weight:900; color:var(--green)">${s.paid_users}</div><div style="color:var(--muted); font-size:13px;">Paid Users</div></div>
+    </div>
+    <div style="margin-top:16px; background:rgba(255,255,255,0.05); border-radius:8px; height:8px; overflow:hidden;">
+      <div style="width:${freeP}%; height:100%; background:var(--blue); border-radius:8px;"></div>
+    </div>
+    <div style="font-size:11px; color:var(--muted); margin-top:6px;">${freeP}% Free / ${100-freeP}% Paid</div>
+  `;
+  document.getElementById('server-breakdown').innerHTML = `
+    <div style="display:flex; gap:20px; flex-wrap:wrap;">
+      <div><div style="font-size:32px; font-weight:900; color:var(--green)">${s.online_servers}</div><div style="color:var(--muted); font-size:13px;">Online</div></div>
+    </div>
+    <div style="margin-top:12px; font-size:13px; color:var(--muted)">Total Sessions: <strong style="color:var(--text)">${s.total_sessions}</strong></div>
+    <div style="font-size:13px; color:var(--muted)">Active Subscriptions: <strong style="color:var(--text)">${s.active_subscriptions}</strong></div>
+  `;
+}
+
+function kpi(label, value, icon, color) {
+  return `<div class="kpi-card">
+    <span class="kpi-icon">${icon}</span>
+    <div class="kpi-label">${label}</div>
+    <div class="kpi-value" style="color:${color}">${value}</div>
+  </div>`;
+}
+
+// ── Users ────────────────────────────────────────────────────────────
+async function loadUsers() {
+  const search = document.getElementById('user-search').value;
+  const plan   = document.getElementById('user-plan-filter').value;
+  document.getElementById('users-tbody').innerHTML = '<tr><td colspan="5"><div class="spinner"></div></td></tr>';
+  const d = await api(`/users?search=${encodeURIComponent(search)}&plan=${plan}&page=${usersPage}&limit=20`);
+  if (!d.success) return;
+  const { users, total } = d.data;
+  document.getElementById('users-tbody').innerHTML = users.map(u => `
+    <tr>
+      <td><div style="font-weight:700">${u.full_name || u.email.split('@')[0]}</div><div style="color:var(--muted); font-size:12px">${u.email}</div></td>
+      <td>${planBadge(u.plan)}</td>
+      <td style="color:var(--muted)">${fmtDate(u.created_at)}</td>
+      <td><span class="badge badge-blue">—</span></td>
+      <td>
+        <button class="btn btn-sm btn-blue" onclick="upgradePlan(${u.id}, 'pro')">→ Pro</button>
+        <button class="btn btn-sm btn-red" onclick="deleteUser(${u.id})">🗑</button>
+      </td>
+    </tr>
+  `).join('') || '<tr><td colspan="5" style="text-align:center; color:var(--muted); padding:32px">No users found</td></tr>';
+}
+
+async function upgradePlan(id, plan) {
+  const d = await api(`/users/${id}`, { method: 'PATCH', body: JSON.stringify({ plan }) });
+  toast(d.message || 'Updated!');
+  loadUsers();
+}
+
+async function deleteUser(id) {
+  if (!confirm('Delete this user? This cannot be undone.')) return;
+  const d = await api(`/users/${id}`, { method: 'DELETE' });
+  toast(d.message || 'Deleted', '#ef4444');
+  loadUsers();
+}
+
+// ── Servers ──────────────────────────────────────────────────────────
+async function loadServers() {
+  document.getElementById('servers-tbody').innerHTML = '<tr><td colspan="7"><div class="spinner"></div></td></tr>';
+  const d = await api('/servers');
+  if (!d.success) return;
+  document.getElementById('servers-tbody').innerHTML = d.data.map(s => `
+    <tr>
+      <td><div style="font-weight:700">${s.city}</div><div style="color:var(--muted); font-size:12px">${s.name}</div></td>
+      <td>${s.country} <span style="font-size:16px">${flag(s.country_code)}</span></td>
+      <td><span style="color:${s.ping_ms < 30 ? 'var(--green)' : s.ping_ms < 80 ? 'var(--yellow)' : 'var(--red)'}; font-weight:700">${s.ping_ms}ms</span></td>
+      <td>${s.capacity_mbps} Mbps</td>
+      <td style="font-size:11px">
+        ${s.is_streaming ? '<span class="badge badge-purple">Stream</span> ' : ''}
+        ${s.is_gaming ? '<span class="badge badge-yellow">Game</span> ' : ''}
+        ${s.is_p2p ? '<span class="badge badge-blue">P2P</span>' : ''}
+      </td>
+      <td>${s.is_online ? '<span class="badge badge-green">● Online</span>' : '<span class="badge badge-red">● Offline</span>'}</td>
+      <td>
+        <button class="btn btn-sm ${s.is_online ? 'btn-red' : 'btn-green'}" onclick="toggleServer('${s.id}', ${!s.is_online})">
+          ${s.is_online ? '⏸ Offline' : '▶ Online'}
+        </button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function flag(code) {
+  if (!code) return '🌍';
+  return code.toUpperCase().replace(/./g, c => String.fromCodePoint(0x1F1E6 + c.charCodeAt(0) - 65));
+}
+
+async function toggleServer(id, online) {
+  const d = await api(`/servers/${id}`, { method: 'PATCH', body: JSON.stringify({ is_online: online }) });
+  toast(d.message || 'Server updated');
+  loadServers();
+}
+
+// ── Sessions ─────────────────────────────────────────────────────────
+async function loadSessions(activeOnly = false) {
+  document.getElementById('sessions-tbody').innerHTML = '<tr><td colspan="6"><div class="spinner"></div></td></tr>';
+  const d = await api(`/sessions?limit=50${activeOnly ? '&active=true' : ''}`);
+  if (!d.success) return;
+  document.getElementById('sessions-tbody').innerHTML = d.data.map(s => {
+    const started = new Date(s.started_at);
+    const ended   = s.ended_at ? new Date(s.ended_at) : new Date();
+    const mins    = Math.floor((ended - started) / 60000);
+    return `
+      <tr>
+        <td><div style="font-weight:700">${s.user_email}</div></td>
+        <td>${s.server_city || '—'}, ${(s.server_country_code||'').toUpperCase()}</td>
+        <td><span class="badge badge-blue">${s.mode || 'standard'}</span></td>
+        <td style="color:var(--muted)">${fmtDate(s.started_at)}</td>
+        <td>${mins}m</td>
+        <td>${s.is_active ? '<span class="badge badge-green">● Live</span>' : '<span class="badge badge-muted">Ended</span>'}</td>
+      </tr>
+    `;
+  }).join('') || '<tr><td colspan="6" style="text-align:center; color:var(--muted); padding:32px">No sessions found</td></tr>';
+}
+
+// ── Tickets ──────────────────────────────────────────────────────────
+async function loadTickets() {
+  const status = document.getElementById('ticket-filter').value;
+  document.getElementById('tickets-tbody').innerHTML = '<tr><td colspan="5"><div class="spinner"></div></td></tr>';
+  const d = await api(`/tickets${status ? '?status='+status : ''}`);
+  if (!d.success) return;
+  const colors = { open: 'red', in_progress: 'yellow', closed: 'muted' };
+  document.getElementById('tickets-tbody').innerHTML = d.data.map(t => `
+    <tr>
+      <td><div style="font-weight:700">${t.subject || 'No subject'}</div><div style="color:var(--muted); font-size:12px">${t.email}</div></td>
+      <td><span class="badge badge-blue">${t.category || 'General'}</span></td>
+      <td style="color:var(--muted)">${fmtDate(t.created_at)}</td>
+      <td><span class="badge badge-${colors[t.status]||'muted'}">${(t.status||'open').replace('_',' ').toUpperCase()}</span></td>
+      <td>
+        ${t.status !== 'in_progress' ? `<button class="btn btn-sm btn-yellow" onclick="updateTicket(${t.id}, 'in_progress')">In Progress</button>` : ''}
+        ${t.status !== 'closed' ? `<button class="btn btn-sm btn-muted" onclick="updateTicket(${t.id}, 'closed')">Close</button>` : ''}
+      </td>
+    </tr>
+  `).join('') || '<tr><td colspan="5" style="text-align:center; color:var(--muted); padding:32px">No tickets found</td></tr>';
+}
+
+async function updateTicket(id, status) {
+  const d = await api(`/tickets/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) });
+  toast(d.message || 'Ticket updated');
+  loadTickets();
+}
+
+// ── Settings ──────────────────────────────────────────────────────────
+async function loadSettings() {
+  const d = await api('/settings');
+  if (!d.success) return;
+  currentSettings = d.data;
+  document.getElementById('settings-form').innerHTML = `
+    <h3 style="font-size:14px; font-weight:800; color:var(--muted); letter-spacing:1px; margin-bottom:20px">APP CONFIGURATION</h3>
+    ${settingNumber('Free session (minutes)', 'free_session_minutes', currentSettings.free_session_minutes, 'Duration of a free user VPN session before auto-disconnect')}
+    ${settingNumber('Ad bonus (minutes)', 'ad_bonus_minutes', currentSettings.ad_bonus_minutes, 'Extra minutes granted when a free user watches an ad')}
+    ${settingNumber('Max free devices', 'max_free_devices', currentSettings.max_free_devices, 'Max simultaneous devices for free plan users')}
+    ${settingToggle('Ads enabled', 'ads_enabled', currentSettings.ads_enabled, 'Show ad banners to free users')}
+    ${settingToggle('Maintenance mode', 'maintenance_mode', currentSettings.maintenance_mode, 'Users will see a maintenance message — admin access still works')}
+  `;
+}
+
+function settingNumber(label, key, value, desc) {
+  return `<div class="settings-item">
+    <div><label>${label}</label><p>${desc}</p></div>
+    <input type="number" id="setting-${key}" value="${value}" min="1" />
+  </div>`;
+}
+
+function settingToggle(label, key, checked, desc) {
+  return `<div class="settings-item">
+    <div><label>${label}</label><p>${desc}</p></div>
+    <label class="toggle-label">
+      <input type="checkbox" id="setting-${key}" ${checked ? 'checked' : ''} />
+      <div class="toggle-track"><div class="toggle-thumb"></div></div>
+    </label>
+  </div>`;
+}
+
+async function saveSettings() {
+  const newSettings = {};
+  for (const key in currentSettings) {
+    const el = document.getElementById('setting-' + key);
+    if (!el) continue;
+    if (el.type === 'checkbox') newSettings[key] = el.checked;
+    else if (el.type === 'number') newSettings[key] = parseInt(el.value);
+    else newSettings[key] = el.value;
+  }
+  const d = await api('/settings', { method: 'PATCH', body: JSON.stringify(newSettings) });
+  toast(d.message || 'Settings saved!');
+  currentSettings = d.data || newSettings;
+}
+</script>
+
+</body>
+</html>
