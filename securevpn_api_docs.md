@@ -1,0 +1,1476 @@
+﻿# AtmosVPN — Complete API Documentation
+**Version:** 2.0  
+**Base URL:** `http://127.0.0.1:5000` (Development)  
+**Production URL:** To be updated when domain is configured  
+**Total Endpoints:** 56  
+**Last Updated:** April 2026
+
+---
+
+## 🔐 Authentication
+All protected endpoints require a JWT token in the header:
+```
+Authorization: Bearer <access_token>
+```
+Tokens are obtained from `/api/auth/login` or `/api/auth/register`.
+
+---
+
+## 📋 Table of Contents
+1. [Auth](#1-auth)
+2. [Servers & Modes](#2-servers--modes)
+3. [VPN](#3-vpn)
+4. [Billing & Subscriptions](#4-billing--subscriptions)
+5. [Devices](#5-devices)
+6. [Notifications](#6-notifications)
+7. [Settings](#7-settings)
+8. [Security](#8-security)
+9. [Support](#9-support)
+10. [Health & Speed](#10-health--speed)
+11. [Admin](#11-admin)
+
+---
+
+# 1. Auth
+
+## 1.1 — POST /api/auth/register
+**Full URL:** `http://127.0.0.1:5000/api/auth/register`  
+**Auth:** ❌ Not required  
+**Description:** Create a new user account. User is auto-assigned the Free plan.
+
+**Request Body:**
+```json
+{
+  "email": "sarah@example.com",
+  "password": "password123",
+  "full_name": "Sarah Smith"
+}
+```
+
+**Response (201):**
+```json
+{
+  "success": true,
+  "message": "Account created successfully",
+  "data": {
+    "user": {
+      "id": "uuid",
+      "email": "sarah@example.com",
+      "full_name": "Sarah Smith",
+      "plan": "free"
+    },
+    "access_token": "eyJhbGciOiJIUzI1...",
+    "refresh_token": "eyJhbGciOiJIUzI1..."
+  }
+}
+```
+
+---
+
+## 1.2 — POST /api/auth/login
+**Full URL:** `http://127.0.0.1:5000/api/auth/login`  
+**Auth:** ❌ Not required  
+**Description:** Login with email and password. Automatically registers the device from the User-Agent header and generates a "New Login" notification for unknown devices.
+
+**Headers (optional but recommended for real device tracking):**
+```
+User-Agent: AtmosVPN/1.0 (iPhone; iOS 17.0)
+```
+
+**Request Body:**
+```json
+{
+  "email": "sarah@example.com",
+  "password": "password123"
+}
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "OK",
+  "data": {
+    "user": { "id": "uuid", "email": "...", "plan": "free", "language": "english", ... },
+    "access_token": "eyJhbGciOiJIUzI1...",
+    "refresh_token": "eyJhbGciOiJIUzI1...",
+    "plan_limits": {
+      "devices": 1,
+      "bandwidth_gb": 10,
+      "speed_mbps": 10,
+      "server_locations": 3
+    }
+  }
+}
+```
+
+---
+
+## 1.3 — POST /api/auth/refresh
+**Full URL:** `http://127.0.0.1:5000/api/auth/refresh`  
+**Auth:** ✅ Bearer `<refresh_token>` (use refresh token, not access token)  
+**Description:** Exchange a refresh token for a new access token when the access token expires.
+
+**No body required.**
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": { "access_token": "eyJhbGciOiJIUzI1..." }
+}
+```
+
+---
+
+## 1.4 — GET /api/auth/me
+**Full URL:** `http://127.0.0.1:5000/api/auth/me`  
+**Auth:** ✅ Required  
+**Description:** Get the full profile of the currently logged-in user including plan limits, devices, and active session count.
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "user": {
+      "id": "uuid",
+      "email": "sarah@example.com",
+      "full_name": "Sarah Smith",
+      "plan": "free",
+      "plan_expires_at": null,
+      "subscription_status": "inactive",
+      "bandwidth_used_bytes": 215807684,
+      "bandwidth_limit_bytes": 10737418240,
+      "email_verified": false,
+      "two_fa_enabled": false,
+      "kill_switch_enabled": true,
+      "auto_connect_wifi": true,
+      "dns_leak_protection": true,
+      "ad_blocker_enabled": true,
+      "tracker_blocker_enabled": false,
+      "malware_protection": true,
+      "dark_theme": true,
+      "language": "english",
+      "auto_connect": false,
+      "preferred_protocol": "wireguard"
+    },
+    "plan_limits": {
+      "devices": 1,
+      "bandwidth_gb": 10,
+      "bandwidth_bytes": 10737418240,
+      "speed_mbps": 10,
+      "server_locations": 3,
+      "modes": ["standard"],
+      "dedicated_ip": false
+    },
+    "devices": [],
+    "active_sessions": 0
+  }
+}
+```
+
+---
+
+## 1.5 — POST /api/auth/change-password
+**Full URL:** `http://127.0.0.1:5000/api/auth/change-password`  
+**Auth:** ✅ Required  
+
+**Request Body:**
+```json
+{
+  "old_password": "password123",
+  "new_password": "newpassword456"
+}
+```
+
+**Response (200):**
+```json
+{ "success": true, "message": "Password changed successfully" }
+```
+
+---
+
+## 1.6 — POST /api/auth/logout
+**Full URL:** `http://127.0.0.1:5000/api/auth/logout`  
+**Auth:** ✅ Required  
+**Description:** Invalidates the current JWT token by adding it to a Redis blocklist. The token becomes permanently unusable even before natural expiry.
+
+**No body required.**
+
+**Response (200):**
+```json
+{ "success": true, "message": "Logged out successfully. Token revoked." }
+```
+
+---
+
+## 1.7 — POST /api/auth/forgot-password
+**Full URL:** `http://127.0.0.1:5000/api/auth/forgot-password`  
+**Auth:** ❌ Not required  
+**Description:** Sends a password reset email to the user.
+
+**Request Body:**
+```json
+{ "email": "sarah@example.com" }
+```
+
+**Response (200):**
+```json
+{ "success": true, "message": "If this email exists, a reset link has been sent." }
+```
+
+---
+
+## 1.8 — POST /api/auth/reset-password
+**Full URL:** `http://127.0.0.1:5000/api/auth/reset-password`  
+**Auth:** ❌ Not required  
+**Description:** Reset password using the token received in the reset email.
+
+**Request Body:**
+```json
+{
+  "token": "reset-token-from-email",
+  "new_password": "newpassword456"
+}
+```
+
+**Response (200):**
+```json
+{ "success": true, "message": "Password reset successfully. You can now log in." }
+```
+
+---
+
+# 2. Servers & Modes
+
+## 2.1 — GET /api/modes
+**Full URL:** `http://127.0.0.1:5000/api/modes`  
+**Auth:** ✅ Required  
+**Description:** Get all VPN modes with plan-based lock status. Free plan only gets Standard. Pro/Premium get all modes.
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "current_plan": "free",
+    "modes": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "description": "Balanced speed and privacy for everyday use",
+        "icon": "shield",
+        "locked": false,
+        "required_plan": "free"
+      },
+      {
+        "id": "streaming",
+        "name": "Streaming",
+        "description": "Optimised for Netflix, Disney+, BBC iPlayer",
+        "icon": "play",
+        "locked": true,
+        "required_plan": "starter"
+      },
+      {
+        "id": "gaming",
+        "name": "Gaming",
+        "description": "Low latency, optimised routing for online games",
+        "icon": "gamepad",
+        "locked": true,
+        "required_plan": "pro"
+      },
+      {
+        "id": "crypto",
+        "name": "Crypto",
+        "description": "Enhanced privacy for crypto transactions",
+        "icon": "bitcoin",
+        "locked": true,
+        "required_plan": "pro"
+      }
+    ]
+  }
+}
+```
+
+---
+
+## 2.2 — GET /api/servers
+**Full URL:** `http://127.0.0.1:5000/api/servers`  
+**Auth:** ✅ Required  
+**Description:** Get all VPN servers. Supports filtering by mode and returning top servers.
+
+**Query Parameters:**
+
+| Param | Type | Description |
+|---|---|---|
+| `mode` | string | Filter: `streaming`, `gaming`, `crypto`, `p2p` |
+| `top` | bool | If `true`, return 5 lowest-ping servers only |
+| `country` | string | Filter by country name |
+
+**Examples:**
+```
+http://127.0.0.1:5000/api/servers
+http://127.0.0.1:5000/api/servers?mode=streaming
+http://127.0.0.1:5000/api/servers?top=true
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "servers": [
+      {
+        "id": "lon-1",
+        "name": "London #1",
+        "city": "London",
+        "country": "United Kingdom",
+        "flag": "🇬🇧",
+        "ip_address": "185.156.46.1",
+        "ping_ms": 12,
+        "load_pct": 34,
+        "capacity_mbps": 1000,
+        "is_online": true,
+        "is_streaming": true,
+        "is_gaming": false,
+        "is_crypto": false,
+        "is_p2p": true
+      }
+    ],
+    "total": 16
+  }
+}
+```
+
+---
+
+## 2.3 — GET /api/servers/best
+**Full URL:** `http://127.0.0.1:5000/api/servers/best`  
+**Auth:** ✅ Required  
+**Description:** Returns the single best server (lowest ping, online). Used for auto-connect.
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "server": { "id": "lon-1", "name": "London #1", "ping_ms": 12, ... }
+  }
+}
+```
+
+---
+
+# 3. VPN
+
+## 3.1 — POST /api/vpn/provision
+**Full URL:** `http://127.0.0.1:5000/api/vpn/provision`  
+**Auth:** ✅ Required  
+**Description:** Register a device's WireGuard public key with a server and get an assigned IP address. This is the "handshake" — must be done once per device per server before connecting. Returns the WireGuard `.conf` file content.
+
+**Request Body:**
+```json
+{
+  "server_id": "lon-1",
+  "public_key": "xxyyzz112233445566778899aabbccddeeffgghhii=",
+  "device_name": "Sarah's iPhone",
+  "platform": "ios",
+  "mode": "standard"
+}
+```
+
+| Field | Required | Options |
+|---|---|---|
+| `server_id` | Optional (auto-picks best if empty) | Any server ID from `/api/servers` |
+| `public_key` | ✅ Required | 44-char base64 WireGuard public key |
+| `device_name` | Optional | Any string |
+| `platform` | Optional | `ios`, `android`, `windows`, `mac`, `linux` |
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "config_id": "uuid",
+    "assigned_ip": "10.0.0.45",
+    "server": { "id": "lon-1", "name": "London #1", ... },
+    "wg_config": "[Interface]\n# Your device's private key...\nAddress = 10.0.0.45/32\nDNS = 1.1.1.1, 8.8.8.8\n\n[Peer]\nPublicKey = SERVER_PUBLIC_KEY\nEndpoint = 185.156.46.1:51820\nAllowedIPs = 0.0.0.0/0, ::/0\nPersistentKeepalive = 25",
+    "job_id": "uuid",
+    "status": "new"
+  }
+}
+```
+
+---
+
+## 3.2 — GET /api/vpn/config/{server_id}
+**Full URL:** `http://127.0.0.1:5000/api/vpn/config/lon-1`  
+**Auth:** ✅ Required  
+**Description:** Get the existing WireGuard config for a specific server (if already provisioned).
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "config_id": "uuid",
+    "assigned_ip": "10.0.0.45",
+    "wg_config": "...",
+    "server": { "id": "lon-1", ... }
+  }
+}
+```
+
+---
+
+## 3.3 — GET /api/vpn/configs
+**Full URL:** `http://127.0.0.1:5000/api/vpn/configs`  
+**Auth:** ✅ Required  
+**Description:** Get all active VPN configurations for the current user (all provisioned devices/servers).
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "configs": [
+      {
+        "config_id": "uuid",
+        "server_id": "lon-1",
+        "server_name": "London #1",
+        "assigned_ip": "10.0.0.45",
+        "device_name": "Sarah's iPhone",
+        "platform": "ios",
+        "is_active": true,
+        "created_at": "2026-04-16T10:00:00Z"
+      }
+    ],
+    "total": 1
+  }
+}
+```
+
+---
+
+## 3.4 — DELETE /api/vpn/config/{config_id}
+**Full URL:** `http://127.0.0.1:5000/api/vpn/config/uuid-here`  
+**Auth:** ✅ Required  
+**Description:** Revoke a specific VPN config (remove a device from a server). Releases the IP back to the pool.
+
+**No body required.**
+
+**Response (200):**
+```json
+{ "success": true, "message": "VPN config revoked. IP released to pool." }
+```
+
+---
+
+## 3.5 — POST /api/vpn/connect
+**Full URL:** `http://127.0.0.1:5000/api/vpn/connect`  
+**Auth:** ✅ Required  
+**Description:** Start a VPN session. Enforces data caps for Free (10 GB) and Starter (100 GB) plans.
+
+**Request Body:**
+```json
+{
+  "server_id": "lon-1",
+  "mode": "standard",
+  "protocol": "wireguard",
+  "device_name": "Sarah's iPhone"
+}
+```
+
+| Field | Options |
+|---|---|
+| `mode` | `standard`, `streaming`, `gaming`, `crypto` |
+| `protocol` | `wireguard`, `openvpn`, `ikev2` |
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "session_id": "uuid",
+    "server": { "id": "lon-1", "name": "London #1", "city": "London", "country": "United Kingdom" },
+    "assigned_ip": "10.0.0.45",
+    "mode": "standard",
+    "protocol": "wireguard",
+    "speed_limit_mbps": 10,
+    "bandwidth_used_gb": 0.2,
+    "bandwidth_limit_gb": 10.0,
+    "bandwidth_warning": true,
+    "bandwidth_warning_pct": 80,
+    "connected_at": "2026-04-18T07:00:00Z"
+  }
+}
+```
+
+> ⚠️ If the user has used 100% of their data cap, returns `403 Forbidden` with `"detail": "Data limit reached. Upgrade your plan."`
+
+---
+
+## 3.6 — POST /api/vpn/disconnect
+**Full URL:** `http://127.0.0.1:5000/api/vpn/disconnect`  
+**Auth:** ✅ Required  
+**Description:** End the active VPN session. Calculates and saves data used during the session.
+
+**No body required.**
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Disconnected",
+  "data": {
+    "session_duration_seconds": 3600,
+    "data_used_mb": 512.4,
+    "bandwidth_used_gb": 0.7,
+    "bandwidth_limit_gb": 10.0
+  }
+}
+```
+
+---
+
+## 3.7 — GET /api/vpn/status
+**Full URL:** `http://127.0.0.1:5000/api/vpn/status`  
+**Auth:** ✅ Required  
+**Description:** Get the live VPN connection status.
+
+**Response (200 — Connected):**
+```json
+{
+  "success": true,
+  "data": {
+    "connected": true,
+    "session_id": "uuid",
+    "server": { "id": "lon-1", "name": "London #1", "city": "London", "country": "UK", "flag": "🇬🇧" },
+    "mode": "standard",
+    "protocol": "wireguard",
+    "assigned_ip": "10.0.0.45",
+    "elapsed_seconds": 3600,
+    "bandwidth_used_gb": 0.7,
+    "bandwidth_limit_gb": 10.0
+  }
+}
+```
+
+**Response (200 — Not Connected):**
+```json
+{
+  "success": true,
+  "data": { "connected": false }
+}
+```
+
+---
+
+## 3.8 — GET /api/vpn/job/{job_id}
+**Full URL:** `http://127.0.0.1:5000/api/vpn/job/uuid-here`  
+**Auth:** ❌ Not required  
+**Description:** Poll the status of a background provisioning job. The app calls this after `/api/vpn/provision` to know when the peer has been added to the WireGuard server.
+
+**Status values:** `pending`, `running`, `completed`, `retrying`, `failed`
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "status": "completed",
+    "message": "WireGuard peer added successfully.",
+    "config_id": "uuid",
+    "assigned_ip": "10.0.0.45",
+    "completed_at": "2026-04-18T07:01:00Z"
+  }
+}
+```
+
+---
+
+## 3.9 — GET /api/vpn/history
+**Full URL:** `http://127.0.0.1:5000/api/vpn/history`  
+**Auth:** ✅ Required  
+**Description:** Get recent VPN session history for the user.
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "sessions": [
+      {
+        "id": "uuid",
+        "server_name": "London #1",
+        "country": "United Kingdom",
+        "mode": "standard",
+        "protocol": "wireguard",
+        "connected_at": "2026-04-18T07:00:00Z",
+        "disconnected_at": "2026-04-18T08:00:00Z",
+        "duration_seconds": 3600,
+        "data_used_mb": 512.4
+      }
+    ],
+    "total": 1
+  }
+}
+```
+
+---
+
+## 3.10 — GET /api/usage/bandwidth
+**Full URL:** `http://127.0.0.1:5000/api/usage/bandwidth`  
+**Auth:** ✅ Required  
+**Description:** Get current bandwidth usage for the user's billing period.
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "used_bytes": 215807684,
+    "used_gb": 0.2,
+    "limit_bytes": 10737418240,
+    "limit_gb": 10.0,
+    "used_pct": 2.0,
+    "limit_reached": false,
+    "warning": false,
+    "plan": "free"
+  }
+}
+```
+
+---
+
+# 4. Billing & Subscriptions
+
+## 4.1 — GET /api/plans
+**Full URL:** `http://127.0.0.1:5000/api/plans`  
+**Auth:** ❌ Not required  
+**Description:** Get all available plans and pricing.
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "plans": [
+      { "id": "free", "name": "Free", "price_monthly": 0, "bandwidth_gb": 10, "speed_mbps": 10, "devices": 1 },
+      { "id": "starter", "name": "Starter", "price_monthly": 3.99, "bandwidth_gb": 100, "speed_mbps": 50, "devices": 3 },
+      { "id": "pro", "name": "Pro", "price_monthly": 7.99, "bandwidth_gb": null, "speed_mbps": 200, "devices": 5 },
+      { "id": "premium", "name": "Premium", "price_monthly": 12.99, "bandwidth_gb": null, "speed_mbps": null, "dedicated_ip": true, "devices": 10 }
+    ]
+  }
+}
+```
+
+---
+
+## 4.2 — GET /api/billing/status
+**Full URL:** `http://127.0.0.1:5000/api/billing/status`  
+**Auth:** ✅ Required  
+**Description:** Get the user's current billing and subscription status.
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "plan": "pro",
+    "subscription_status": "active",
+    "plan_expires_at": "2026-05-18T00:00:00Z",
+    "next_charge": { "amount": 7.99, "currency": "usd", "date": "2026-05-18" },
+    "stripe_customer_id": "cus_xxxx"
+  }
+}
+```
+
+---
+
+## 4.3 — POST /api/billing/checkout
+**Full URL:** `http://127.0.0.1:5000/api/billing/checkout`  
+**Auth:** ✅ Required  
+**Description:** Creates a Stripe Checkout session and returns a URL. The app opens this URL in a browser/webview for the user to pay.
+
+**Request Body:**
+```json
+{
+  "plan": "pro",
+  "billing_cycle": "monthly"
+}
+```
+
+| Field | Options |
+|---|---|
+| `plan` | `starter`, `pro`, `premium` |
+| `billing_cycle` | `monthly`, `annual` |
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "checkout_url": "https://checkout.stripe.com/pay/cs_test_...",
+    "session_id": "cs_test_...",
+    "plan": "pro",
+    "billing_cycle": "monthly",
+    "amount": 7.99,
+    "currency": "usd"
+  }
+}
+```
+
+> 🧪 **Test Card:** `4242 4242 4242 4242` | Any future date | Any CVC
+
+---
+
+## 4.4 — POST /api/billing/portal
+**Full URL:** `http://127.0.0.1:5000/api/billing/portal`  
+**Auth:** ✅ Required  
+**Description:** Opens Stripe's self-service portal where users can update payment method, cancel subscription, or view invoices. Requires user to have paid at least once.
+
+**No body required.**
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "portal_url": "https://billing.stripe.com/session/..."
+  }
+}
+```
+
+**Error (400):** `{ "detail": "You do not have an active billing account" }`
+
+---
+
+## 4.5 — POST /api/webhooks/stripe
+**Full URL:** `http://127.0.0.1:5000/api/webhooks/stripe`  
+**Auth:** ❌ No JWT — verified by `Stripe-Signature` header  
+**Description:** Stripe calls this endpoint automatically when payment events occur. The frontend never calls this directly.
+
+> ⚠️ **This endpoint is for Stripe only.** Never call it from the app.
+
+**Events handled:**
+
+| Event | Action |
+|---|---|
+| `checkout.session.completed` | Upgrade plan, save `stripe_customer_id`, reset bandwidth |
+| `invoice.payment_succeeded` | Extend `plan_expires_at`, reset bandwidth |
+| `invoice.payment_failed` | Log warning (Stripe retries for 7 days) |
+| `customer.subscription.deleted` | Downgrade to free, revoke WireGuard configs |
+| `customer.subscription.updated` | Sync new plan to DB |
+
+---
+
+## 4.6 — GET /api/subscriptions/history
+**Full URL:** `http://127.0.0.1:5000/api/subscriptions/history`  
+**Auth:** ✅ Required  
+**Description:** Get the user's subscription and payment history.
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "subscriptions": [
+      {
+        "id": "uuid",
+        "plan": "pro",
+        "billing_cycle": "monthly",
+        "status": "active",
+        "amount_usd": 7.99,
+        "currency": "usd",
+        "started_at": "2026-04-18T00:00:00Z",
+        "expires_at": "2026-05-18T00:00:00Z"
+      }
+    ]
+  }
+}
+```
+
+---
+
+# 5. Devices
+
+## 5.1 — GET /api/devices
+**Full URL:** `http://127.0.0.1:5000/api/devices`  
+**Auth:** ✅ Required  
+**Description:** Get all devices registered to the user's account. Devices are automatically tracked on each login.
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "devices": [
+      {
+        "id": "uuid",
+        "name": "AtmosVPN/1.0 (iPhone; iOS 17.0)",
+        "platform": "ios",
+        "is_trusted": true,
+        "last_seen": "2026-04-18T10:00:00Z",
+        "created_at": "2026-04-16T10:30:00Z"
+      }
+    ],
+    "total": 1
+  }
+}
+```
+
+---
+
+## 5.2 — DELETE /api/devices/{device_id}
+**Full URL:** `http://127.0.0.1:5000/api/devices/uuid-here`  
+**Auth:** ✅ Required  
+**Description:** Remove a device from the account. Also revokes any VPN configs associated with that device.
+
+**No body required.**
+
+**Response (200):**
+```json
+{ "success": true, "message": "Device removed" }
+```
+
+---
+
+# 6. Notifications
+
+## 6.1 — GET /api/notifications
+**Full URL:** `http://127.0.0.1:5000/api/notifications`  
+**Auth:** ✅ Required  
+**Description:** Get all in-app notifications for the current user. Notifications are auto-seeded on first call.
+
+**Query Parameters:**
+
+| Param | Type | Description |
+|---|---|---|
+| `unread_only` | bool | If `true`, return only unread notifications |
+
+**Notification Types:**
+
+| Type | Meaning | Icon |
+|---|---|---|
+| `security` | Malware/unsafe website blocked | 🛡️ Shield |
+| `vpn_event` | VPN disconnected, kill switch fired | ❌ Red disconnect |
+| `login` | New device login detected | 📱 Device |
+| `bandwidth` | 80%+ data usage warning | ⚠️ Warning |
+| `upgrade` | Plan upgrade suggestion | ⭐ Star |
+| `coming_soon` | Dark web / Phishing AI (future) | 🟣 Purple badge |
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "total": 5,
+    "unread_count": 3,
+    "notifications": [
+      {
+        "id": "uuid",
+        "type": "security",
+        "title": "Unsafe website blocked",
+        "message": "Malicious site attempt was blocked while browsing",
+        "is_read": false,
+        "coming_soon": false,
+        "meta": null,
+        "created_at": "2026-04-18T10:05:00Z",
+        "time_ago": "2 min ago"
+      },
+      {
+        "id": "uuid",
+        "type": "vpn_event",
+        "title": "VPN disconnected",
+        "message": "Connection dropped — kill switch activated",
+        "is_read": false,
+        "coming_soon": false,
+        "meta": null,
+        "time_ago": "1 hour ago"
+      },
+      {
+        "id": "uuid",
+        "type": "login",
+        "title": "New login detected",
+        "message": "New device logged in from 127.0.0.1",
+        "is_read": false,
+        "coming_soon": false,
+        "meta": { "ip": "127.0.0.1", "device": "ios" },
+        "time_ago": "3 hours ago"
+      },
+      {
+        "id": "uuid",
+        "type": "coming_soon",
+        "title": "Dark web alert",
+        "message": "Email found on dark web database — coming soon",
+        "is_read": true,
+        "coming_soon": true,
+        "time_ago": "Yesterday"
+      },
+      {
+        "id": "uuid",
+        "type": "coming_soon",
+        "title": "Phishing site detected",
+        "message": "AI detected phishing attempt — coming soon",
+        "is_read": true,
+        "coming_soon": true,
+        "time_ago": "Yesterday"
+      }
+    ]
+  }
+}
+```
+
+---
+
+## 6.2 — PATCH /api/notifications/{notif_id}/read
+**Full URL:** `http://127.0.0.1:5000/api/notifications/uuid-here/read`  
+**Auth:** ✅ Required  
+**Description:** Mark a single notification as read. Call when user taps a notification.
+
+**No body required.**
+
+**Response (200):**
+```json
+{ "success": true, "message": "Marked as read", "data": { "id": "uuid", "is_read": true, ... } }
+```
+
+---
+
+## 6.3 — PATCH /api/notifications/read-all
+**Full URL:** `http://127.0.0.1:5000/api/notifications/read-all`  
+**Auth:** ✅ Required  
+**Description:** Mark ALL notifications as read. Call when user taps "Mark all as read".
+
+**No body required.**
+
+**Response (200):**
+```json
+{ "success": true, "message": "All notifications marked as read" }
+```
+
+---
+
+## 6.4 — DELETE /api/notifications/{notif_id}
+**Full URL:** `http://127.0.0.1:5000/api/notifications/uuid-here`  
+**Auth:** ✅ Required  
+**Description:** Delete (dismiss) a single notification.
+
+**No body required.**
+
+**Response (200):**
+```json
+{ "success": true, "message": "Notification dismissed" }
+```
+
+---
+
+# 7. Settings
+
+## 7.1 — GET /api/settings
+**Full URL:** `http://127.0.0.1:5000/api/settings`  
+**Auth:** ✅ Required  
+**Description:** Get all app settings for the current user — Appearance, Language, and Connection preferences.
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "appearance": {
+      "dark_theme": true
+    },
+    "language": {
+      "selected": "english",
+      "options": [
+        { "code": "english",    "label": "English" },
+        { "code": "spanish",    "label": "Español" },
+        { "code": "french",     "label": "Français" },
+        { "code": "german",     "label": "Deutsch" },
+        { "code": "arabic",     "label": "العربية" },
+        { "code": "hindi",      "label": "हिन्दी" },
+        { "code": "portuguese", "label": "Português" },
+        { "code": "japanese",   "label": "日本語" },
+        { "code": "chinese",    "label": "中文" },
+        { "code": "korean",     "label": "한국어" }
+      ]
+    },
+    "connection": {
+      "auto_connect": false,
+      "preferred_protocol": "wireguard",
+      "protocol_options": [
+        { "id": "wireguard", "label": "WireGuard",   "description": "Fastest — recommended for most users" },
+        { "id": "openvpn",   "label": "OpenVPN",     "description": "Most compatible — works on all networks" },
+        { "id": "ikev2",     "label": "IKEv2/IPSec", "description": "Best for mobile — reconnects automatically" }
+      ]
+    }
+  }
+}
+```
+
+---
+
+## 7.2 — PATCH /api/settings
+**Full URL:** `http://127.0.0.1:5000/api/settings`  
+**Auth:** ✅ Required  
+**Description:** Update any app setting. Send only the fields you want to change (all fields are optional).
+
+**Request Body (send any one or more):**
+```json
+{
+  "dark_theme": false,
+  "language": "spanish",
+  "auto_connect": true,
+  "preferred_protocol": "openvpn"
+}
+```
+
+| Field | Type | Options |
+|---|---|---|
+| `dark_theme` | boolean | `true`, `false` |
+| `language` | string | `english`, `spanish`, `french`, `german`, `arabic`, `hindi`, `portuguese`, `japanese`, `chinese`, `korean` |
+| `auto_connect` | boolean | `true`, `false` |
+| `preferred_protocol` | string | `wireguard`, `openvpn`, `ikev2` |
+
+**Response (200):** Same as GET /api/settings with updated values and `"message": "Settings saved"`
+
+> 📌 **Frontend Note:** Language changes only tell the app which language was selected. The app itself must apply the translation using an i18n library (e.g. i18next, flutter_intl). The API response will always be in English.
+
+---
+
+## 7.3 — GET /api/referrals
+**Full URL:** `http://127.0.0.1:5000/api/referrals`  
+**Auth:** ✅ Required  
+**Description:** Get the user's unique referral code and sharing link.
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "referral_code": "ATMOS-A1B2C3",
+    "referral_link": "https://atmosvpn.com/join?ref=ATMOS-A1B2C3",
+    "referred_count": 0,
+    "reward_days_earned": 0,
+    "reward_per_referral": 7,
+    "how_it_works": [
+      "Share your referral link with friends",
+      "When they sign up using your link, they get 7 days free",
+      "You earn 7 days of free Essential plan for each referral"
+    ]
+  }
+}
+```
+
+---
+
+# 8. Security
+
+## 8.1 — GET /api/security/settings
+**Full URL:** `http://127.0.0.1:5000/api/security/settings`  
+**Auth:** ✅ Required  
+**Description:** Get all security feature toggles and the computed Privacy Score (0–100).
+
+**Privacy Score Calculation:**
+- Kill Switch: +20
+- DNS Leak Protection: +20
+- Ad Blocker: +15
+- Tracker Blocker: +20
+- Malware Protection: +15
+- Auto Connect WiFi: +10
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "privacy_score": 80,
+    "features": {
+      "kill_switch_enabled": true,
+      "auto_connect_wifi": true,
+      "dns_leak_protection": true,
+      "ad_blocker_enabled": true,
+      "tracker_blocker_enabled": false,
+      "malware_protection": true
+    },
+    "feature_details": [
+      { "key": "kill_switch_enabled", "label": "Kill Switch", "description": "Blocks internet if VPN drops", "enabled": true, "points": 20 },
+      { "key": "dns_leak_protection", "label": "DNS Leak Protection", "description": "Prevents real IP exposure via DNS", "enabled": true, "points": 20 },
+      { "key": "tracker_blocker_enabled", "label": "Tracker Blocker", "description": "Blocks tracking scripts", "enabled": false, "points": 20 },
+      { "key": "ad_blocker_enabled", "label": "Ad Blocker", "description": "Blocks intrusive ads at DNS level", "enabled": true, "points": 15 },
+      { "key": "malware_protection", "label": "Malware Protection", "description": "Blocks known malware domains", "enabled": true, "points": 15 },
+      { "key": "auto_connect_wifi", "label": "Auto Connect on WiFi", "description": "Connects VPN automatically on public WiFi", "enabled": true, "points": 10 }
+    ]
+  }
+}
+```
+
+---
+
+## 8.2 — PATCH /api/security/settings
+**Full URL:** `http://127.0.0.1:5000/api/security/settings`  
+**Auth:** ✅ Required  
+**Description:** Update any security setting. Send only the fields you want to change.
+
+**Request Body (send any one or more):**
+```json
+{
+  "kill_switch_enabled": true,
+  "auto_connect_wifi": true,
+  "dns_leak_protection": true,
+  "ad_blocker_enabled": true,
+  "tracker_blocker_enabled": true,
+  "malware_protection": true
+}
+```
+
+**Response (200):** Same as GET /api/security/settings with updated values and new Privacy Score.
+
+---
+
+# 9. Support
+
+## 9.1 — POST /api/support/ticket
+**Full URL:** `http://127.0.0.1:5000/api/support/ticket`  
+**Auth:** ❌ Not required  
+**Description:** Submit a support ticket.
+
+**Request Body:**
+```json
+{
+  "email": "sarah@example.com",
+  "subject": "Cannot connect to London server",
+  "message": "I get a timeout error every time I try to connect...",
+  "category": "technical"
+}
+```
+
+| Category | Description |
+|---|---|
+| `billing` | Payment, refunds, plan issues |
+| `technical` | Connection issues, app bugs |
+| `general` | General questions |
+| `abuse` | Report abuse or spam |
+
+**Response (201):**
+```json
+{
+  "success": true,
+  "message": "Support ticket submitted. We'll respond to sarah@example.com within 24 hours.",
+  "data": { "ticket_id": "uuid", "status": "open" }
+}
+```
+
+---
+
+## 9.2 — GET /api/support/faq
+**Full URL:** `http://127.0.0.1:5000/api/support/faq`  
+**Auth:** ❌ Not required  
+**Description:** Get frequently asked questions for the in-app Help/FAQ section.
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "categories": [
+      {
+        "category": "Getting Started",
+        "questions": [
+          { "q": "How do I connect to a VPN server?", "a": "Open the app, choose a server..." }
+        ]
+      }
+    ]
+  }
+}
+```
+
+---
+
+# 10. Health & Speed
+
+## 10.1 — GET /api/status
+**Full URL:** `http://127.0.0.1:5000/api/status`  
+**Auth:** ❌ Not required  
+**Description:** Health check — confirms the API and database are running.
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "status": "healthy",
+    "database": "connected",
+    "redis": "connected",
+    "version": "2.0.0"
+  }
+}
+```
+
+---
+
+## 10.2 — GET /api/ip
+**Full URL:** `http://127.0.0.1:5000/api/ip`  
+**Auth:** ❌ Not required  
+**Description:** Returns the caller's public IP address. Use this to show "Your IP is X" in the app UI.
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": { "ip": "185.156.46.1" }
+}
+```
+
+---
+
+## 10.3 — POST /api/speedtest/run
+**Full URL:** `http://127.0.0.1:5000/api/speedtest/run`  
+**Auth:** ✅ Required  
+**Description:** Run a simulated speed test. Returns download/upload speeds and latency for the UI speed gauge.
+
+**No body required.**
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "download_mbps": 89.4,
+    "upload_mbps": 43.2,
+    "ping_ms": 12,
+    "latency_ms": 14,
+    "jitter_ms": 2.3,
+    "server_location": "London, UK",
+    "tested_at": "2026-04-18T10:00:00Z"
+  }
+}
+```
+
+---
+
+# 11. Admin
+
+> 🔒 All admin endpoints require an extra header:
+> `X-Admin-Token: <ADMIN_PASSWORD from .env>`
+
+## 11.1 — POST /api/admin/login
+**Full URL:** `http://127.0.0.1:5000/api/admin/login`  
+**Auth:** Special admin token header  
+
+**Request Body:**
+```json
+{ "password": "securevpn-admin-2024" }
+```
+
+---
+
+## 11.2 — GET /api/admin/stats
+**Full URL:** `http://127.0.0.1:5000/api/admin/stats`  
+**Auth:** ✅ JWT + Admin Token  
+**Description:** Dashboard stats — total users, active sessions, revenue, server health.
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "total_users": 150,
+    "active_sessions": 12,
+    "total_servers": 16,
+    "online_servers": 16,
+    "plan_breakdown": { "free": 120, "starter": 20, "pro": 8, "premium": 2 }
+  }
+}
+```
+
+---
+
+## 11.3 — GET /api/admin/users
+**Full URL:** `http://127.0.0.1:5000/api/admin/users`  
+**Auth:** ✅ JWT + Admin Token  
+
+---
+
+## 11.4 — GET /api/admin/users/{user_id}
+**Full URL:** `http://127.0.0.1:5000/api/admin/users/uuid-here`  
+**Auth:** ✅ JWT + Admin Token  
+
+---
+
+## 11.5 — PATCH /api/admin/users/{user_id}
+**Full URL:** `http://127.0.0.1:5000/api/admin/users/uuid-here`  
+**Auth:** ✅ JWT + Admin Token  
+
+**Request Body:**
+```json
+{ "plan": "pro", "full_name": "Updated Name" }
+```
+
+---
+
+## 11.6 — DELETE /api/admin/users/{user_id}
+**Full URL:** `http://127.0.0.1:5000/api/admin/users/uuid-here`  
+**Auth:** ✅ JWT + Admin Token  
+**Description:** Permanently delete a user and all their data.
+
+---
+
+## 11.7 — DELETE /api/admin/users/{user_id}/suspend
+**Full URL:** `http://127.0.0.1:5000/api/admin/users/uuid-here/suspend`  
+**Auth:** ✅ JWT + Admin Token  
+**Description:** Suspend a user — downgrades to free plan and revokes all WireGuard configs.
+
+---
+
+## 11.8 — GET /api/admin/servers
+**Full URL:** `http://127.0.0.1:5000/api/admin/servers`  
+**Auth:** ✅ JWT + Admin Token  
+
+---
+
+## 11.9 — PATCH /api/admin/servers/{server_id}
+**Full URL:** `http://127.0.0.1:5000/api/admin/servers/lon-1`  
+**Auth:** ✅ JWT + Admin Token  
+
+**Request Body:**
+```json
+{
+  "is_online": true,
+  "ping_ms": 12,
+  "is_streaming": true
+}
+```
+
+---
+
+## 11.10 — GET /api/admin/sessions
+**Full URL:** `http://127.0.0.1:5000/api/admin/sessions`  
+**Auth:** ✅ JWT + Admin Token  
+**Description:** View all active VPN sessions across all users.
+
+---
+
+## 11.11 — GET /api/admin/tickets
+**Full URL:** `http://127.0.0.1:5000/api/admin/tickets`  
+**Auth:** ✅ JWT + Admin Token  
+**Description:** View all support tickets.
+
+---
+
+## 11.12 — PATCH /api/admin/tickets/{ticket_id}
+**Full URL:** `http://127.0.0.1:5000/api/admin/tickets/uuid-here`  
+**Auth:** ✅ JWT + Admin Token  
+
+**Request Body:**
+```json
+{ "status": "resolved" }
+```
+
+---
+
+## 11.13 — GET /api/admin/settings
+**Full URL:** `http://127.0.0.1:5000/api/admin/settings`  
+**Auth:** ✅ JWT + Admin Token  
+
+---
+
+## 11.14 — PATCH /api/admin/settings
+**Full URL:** `http://127.0.0.1:5000/api/admin/settings`  
+**Auth:** ✅ JWT + Admin Token  
+
+---
+
+# 🧪 Test Endpoints (Development Only — Remove in Production)
+
+## T.1 — POST /api/test/notifications/trigger
+**Full URL:** `http://127.0.0.1:5000/api/test/notifications/trigger`  
+**Auth:** ✅ Required  
+**Description:** Manually generate a random new notification (security, vpn_event, or login type) to test the UI notification flow without waiting for real events.
+
+**No body required.**
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "New notification generated successfully",
+  "data": {
+    "id": "uuid",
+    "type": "security",
+    "title": "Malware Blocked",
+    "message": "AtmosVPN blocked a malicious download attempt.",
+    "is_read": false,
+    "time_ago": "Just now"
+  }
+}
+```
+
+---
+
+# 📊 Complete API Summary
+
+| # | Method | Endpoint | Auth | Category |
+|---|---|---|---|---|
+| 1 | POST | `/api/auth/register` | ❌ | Auth |
+| 2 | POST | `/api/auth/login` | ❌ | Auth |
+| 3 | POST | `/api/auth/refresh` | ✅ Refresh | Auth |
+| 4 | GET | `/api/auth/me` | ✅ | Auth |
+| 5 | POST | `/api/auth/change-password` | ✅ | Auth |
+| 6 | POST | `/api/auth/logout` | ✅ | Auth |
+| 7 | POST | `/api/auth/forgot-password` | ❌ | Auth |
+| 8 | POST | `/api/auth/reset-password` | ❌ | Auth |
+| 9 | GET | `/api/modes` | ✅ | Servers |
+| 10 | GET | `/api/servers` | ✅ | Servers |
+| 11 | GET | `/api/servers/best` | ✅ | Servers |
+| 12 | POST | `/api/vpn/provision` | ✅ | VPN |
+| 13 | GET | `/api/vpn/config/{server_id}` | ✅ | VPN |
+| 14 | GET | `/api/vpn/configs` | ✅ | VPN |
+| 15 | DELETE | `/api/vpn/config/{config_id}` | ✅ | VPN |
+| 16 | POST | `/api/vpn/connect` | ✅ | VPN |
+| 17 | POST | `/api/vpn/disconnect` | ✅ | VPN |
+| 18 | GET | `/api/vpn/status` | ✅ | VPN |
+| 19 | GET | `/api/vpn/job/{job_id}` | ❌ | VPN |
+| 20 | GET | `/api/vpn/history` | ✅ | VPN |
+| 21 | GET | `/api/usage/bandwidth` | ✅ | VPN |
+| 22 | GET | `/api/plans` | ❌ | Billing |
+| 23 | GET | `/api/billing/status` | ✅ | Billing |
+| 24 | POST | `/api/billing/checkout` | ✅ | Billing |
+| 25 | POST | `/api/billing/portal` | ✅ | Billing |
+| 26 | POST | `/api/webhooks/stripe` | Stripe | Billing |
+| 27 | GET | `/api/subscriptions/history` | ✅ | Billing |
+| 28 | GET | `/api/devices` | ✅ | Devices |
+| 29 | DELETE | `/api/devices/{device_id}` | ✅ | Devices |
+| 30 | GET | `/api/notifications` | ✅ | Notifications |
+| 31 | PATCH | `/api/notifications/{id}/read` | ✅ | Notifications |
+| 32 | PATCH | `/api/notifications/read-all` | ✅ | Notifications |
+| 33 | DELETE | `/api/notifications/{id}` | ✅ | Notifications |
+| 34 | GET | `/api/settings` | ✅ | Settings |
+| 35 | PATCH | `/api/settings` | ✅ | Settings |
+| 36 | GET | `/api/referrals` | ✅ | Settings |
+| 37 | GET | `/api/security/settings` | ✅ | Security |
+| 38 | PATCH | `/api/security/settings` | ✅ | Security |
+| 39 | POST | `/api/support/ticket` | ❌ | Support |
+| 40 | GET | `/api/support/faq` | ❌ | Support |
+| 41 | GET | `/api/status` | ❌ | Health |
+| 42 | GET | `/api/ip` | ❌ | Health |
+| 43 | POST | `/api/speedtest/run` | ✅ | Health |
+
+
+| 44 | POST | `/api/admin/login` | Admin | Admin |
+| 45 | GET | `/api/admin/stats` | Admin | Admin |
+| 46 | GET | `/api/admin/users` | Admin | Admin |
+| 47 | GET | `/api/admin/users/{user_id}` | Admin | Admin |
+| 48 | PATCH | `/api/admin/users/{user_id}` | Admin | Admin |
+| 49 | DELETE | `/api/admin/users/{user_id}` | Admin | Admin |
+| 50 | DELETE | `/api/admin/users/{user_id}/suspend` | Admin | Admin |
+| 51 | GET | `/api/admin/servers` | Admin | Admin |
+| 52 | PATCH | `/api/admin/servers/{server_id}` | Admin | Admin |
+| 53 | GET | `/api/admin/sessions` | Admin | Admin |
+| 54 | GET | `/api/admin/tickets` | Admin | Admin |
+| 55 | PATCH | `/api/admin/tickets/{ticket_id}` | Admin | Admin |
+| 56 | GET | `/api/admin/settings` | Admin | Admin |
+| 57 | PATCH | `/api/admin/settings` | Admin | Admin |
+| T1 | POST | `/api/test/notifications/trigger` | ✅ | Test Only |

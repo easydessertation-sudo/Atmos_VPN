@@ -1,0 +1,37 @@
+# SecureVPN Backend — Python Dependencies
+# Install with: pip install -r requirements.txt
+
+# ── Web Framework ─────────────────────────────────────────────────
+fastapi==0.115.12
+uvicorn[standard]==0.34.0
+
+# ── Database ──────────────────────────────────────────────────────
+sqlalchemy==2.0.40
+psycopg2-binary==2.9.11        # PostgreSQL driver (Supabase)
+
+# ── Auth & Security ───────────────────────────────────────────────
+python-jose[cryptography]==3.3.0   # JWT tokens
+passlib[bcrypt]==1.7.4             # Password hashing
+bcrypt==4.0.1                      # Pin to 4.0.1 — passlib is not compatible with bcrypt 5+
+
+# ── Rate Limiting ─────────────────────────────────────────────────
+slowapi==0.1.9                     # Rate limiting
+
+# ── Validation ────────────────────────────────────────────────────
+pydantic[email]==2.11.1            # Request body validation + email format
+
+# ── Config ────────────────────────────────────────────────────────
+python-dotenv==1.1.0               # Load .env file
+
+# ── Redis & Caching ───────────────────────────────────────────────
+redis==7.4.0                       # Redis client (token blocklist + cache)
+
+# ── Background Tasks ──────────────────────────────────────────────
+celery==5.6.3                      # Background task worker
+flower==2.0.1                      # Celery monitoring UI (http://localhost:5555)
+
+# ── WireGuard SSH Management ──────────────────────────────────────
+asyncssh==2.22.0                   # SSH into WireGuard servers
+
+# ── Payment Processing ──────────────────────────────────────────────
+stripe==15.0.1                     # Stripe payments

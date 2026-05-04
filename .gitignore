@@ -1,0 +1,17 @@
+# Env files
+.env
+*.env
+
+# Python
+__pycache__/
+*.pyc
+
+# Virtual env
+venv/
+backend/venv/
+
+# DB
+*.db
+
+# OS
+.DS_Store
