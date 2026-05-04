@@ -1,0 +1,23 @@
+# AtmosVPN Admin Panel Backend — Python Dependencies
+# Install with: pip install -r requirements.txt
+
+# ── Web Framework ────────────────────────────────────────────────
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+
+# ── Database ──────────────────────────────────────────────────────
+sqlalchemy==2.0.30
+psycopg2-binary==2.9.9        # PostgreSQL driver (Supabase)
+
+# ── Auth & Security ──────────────────────────────────────────────
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+
+# ── Validation ───────────────────────────────────────────────────
+pydantic[email]==2.7.1
+
+# ── Rate Limiting ────────────────────────────────────────────────
+slowapi==0.1.9
+
+# ── Environment ──────────────────────────────────────────────────
+python-dotenv==1.0.1

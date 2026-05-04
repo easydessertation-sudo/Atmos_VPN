@@ -1,0 +1,2595 @@
+🚀 AtmosVPN Admin Panel —Dashboard APIs
+Base URL: http://localhost:5001
+Auth Header (required on all requests): X-Admin-Token: securevpn-admin-2024
+
+👑 1. One-Time Setup (Create First Super Admin)
+Because we wiped out the global password, there are currently no valid admin accounts in your database! You must run this endpoint exactly once to bootstrap your system.
+
+Endpoint: POST /api/admin/setup-super-admin (No auth header required)
+
+Payload:
+
+json
+{
+  "name": "Shafi",
+  "email": "super@atmosvpn.com",
+  "password": "MySecurePassword123!"
+}
+Response: Returns your newly created user profile. If you ever try to call this endpoint again, it will gracefully fail with a 400 Bad Request since a Super Admin already exists.
+
+🔐 2. Admin Login (Updated)
+Now requires the email and password you just created.
+
+Endpoint: POST /api/admin/login
+
+Payload:
+
+json
+{
+  "email": "super@atmosvpn.com",
+  "password": "MySecurePassword123!"
+}
+Response:
+
+json
+{
+  "success": true,
+  "message": "Admin login successful",
+  "data": {
+    "admin_token": "eyJhbGciOiJIUzI1NiIsInR5cCI...", // <-- USE THIS REAL JWT TOKEN NOW
+    "user": {
+      "name": "Shafi",
+      "email": "super@atmosvpn.com",
+      "role": "Super Admin"
+    }
+  }
+}
+Important: You must take that admin_token string and put it in your Postman X-Admin-Token header for all subsequent requests! The old securevpn-admin-2024 string will no longer work (unless your .env forces it in fallback mode).
+
+➕ 3. Add New Admin User (Updated)
+When you add a new team member via the "Admin Team" page, you now must provide a password for them so they can log in. Note: Only a "Super Admin" is permitted to call this endpoint now!
+
+Endpoint: POST /api/admin/team/members Headers: X-Admin-Token: <your_new_jwt_token>
+
+Payload:
+
+json
+{
+  "name": "Sarah Jenkins",
+  "email": "ops@atmosvpn.com",
+  "password": "TemporaryPassword456!",
+  "role": "Operations",
+  "two_fa_enabled": false
+}
+
+
+
+
+
+2️⃣ Dashboard (Single Call — Recommended)
+GET /api/admin/dashboard
+X-Admin-Token: securevpn-admin-2024
+No request body needed.
+
+Response:
+
+json
+{
+  "success": true,
+  "message": "OK",
+  "data": {
+    "generated_at": "2026-04-27T09:15:00Z",
+    "kpi_cards": {
+      "total_users": {
+        "value": 2847000,
+        "growth_pct": 3.2,
+        "new_this_month": 12400,
+        "label": "Total Users"
+      },
+      "mrr": {
+        "value_usd": 847000.00,
+        "delta_usd": 2000.00,
+        "label": "MRR"
+      },
+      "servers": {
+        "online": 127,
+        "total": 130,
+        "maintenance": 3,
+        "label": "Active Servers"
+      },
+      "tickets": {
+        "open": 234,
+        "urgent": 18,
+        "label": "Open Tickets"
+      }
+    },
+    "key_metrics": {
+      "arr_usd": 10164000.00,
+      "churn_rate_pct": 2.3,
+      "trial_paid_conv_pct": 31.4,
+      "avg_session": "2h 14m",
+      "avg_session_sec": 8040,
+      "refund_rate_pct": 1.1,
+      "bandwidth_today_bytes": 2013265920000000,
+      "bandwidth_today_pb": 1.83,
+      "avg_ticket_res_hrs": 8.2,
+      "avg_ticket_res_label": "8.2 hrs",
+      "nps_score": null
+    },
+    "mrr_trend": [
+      { "month": "Jan", "year": 2026, "label": "Jan 2026", "amount": 500000.00 },
+      { "month": "Feb", "year": 2026, "label": "Feb 2026", "amount": 580000.00 },
+      { "month": "Mar", "year": 2026, "label": "Mar 2026", "amount": 620000.00 },
+      { "month": "Apr", "year": 2026, "label": "Apr 2026", "amount": 847000.00 }
+    ],
+    "traffic_today": [
+      { "hour": "00h", "tb": 0.12, "gb": 122.5, "bytes_down": 65000000000, "bytes_up": 65000000000 },
+      { "hour": "01h", "tb": 0.08, "gb": 81.9, "bytes_down": 44000000000, "bytes_up": 44000000000 },
+      { "hour": "12h", "tb": 2.10, "gb": 2150.0, "bytes_down": 1150000000000, "bytes_up": 1150000000000 },
+      { "hour": "22h", "tb": 1.45, "gb": 1485.0, "bytes_down": 800000000000, "bytes_up": 800000000000 }
+    ],
+    "plan_distribution": {
+      "free":    1240000,
+      "starter": 480000,
+      "pro":     1000000,
+      "premium": 127000
+    }
+  }
+}
+3️⃣ MRR Trend — 12 Months
+GET /api/admin/analytics/mrr-trend?months=12
+X-Admin-Token: securevpn-admin-2024
+Query Params:
+
+Param	Type	Default	Description
+months	int	12	Number of months to return
+Response:
+
+json
+{
+  "success": true,
+  "message": "OK",
+  "data": [
+    { "month": "Jan", "year": 2026, "label": "Jan 2026", "amount": 500000.00 },
+    { "month": "Feb", "year": 2026, "label": "Feb 2026", "amount": 580000.00 },
+    { "month": "Mar", "year": 2026, "label": "Mar 2026", "amount": 620000.00 },
+    { "month": "Apr", "year": 2026, "label": "Apr 2026", "amount": 847000.00 }
+  ]
+}
+4️⃣ Today's Traffic — Hourly (TB/hr)
+GET /api/admin/analytics/traffic-today
+X-Admin-Token: securevpn-admin-2024
+No params needed.
+
+Response:
+
+json
+{
+  "success": true,
+  "message": "OK",
+  "data": [
+    { "hour": "00h", "tb": 0.12, "gb": 122.5, "bytes_down": 65000000000, "bytes_up": 65000000000 },
+    { "hour": "01h", "tb": 0.08, "gb": 81.9,  "bytes_down": 44000000000, "bytes_up": 44000000000 },
+    { "hour": "02h", "tb": 0.05, "gb": 51.2,  "bytes_down": 27000000000, "bytes_up": 27000000000 },
+    "...24 hourly entries total..."
+  ]
+}
+5️⃣ Plan Distribution (Donut Chart)
+GET /api/admin/analytics/plan-distribution
+X-Admin-Token: securevpn-admin-2024
+Response:
+
+json
+{
+  "success": true,
+  "message": "OK",
+  "data": {
+    "total": 2847000,
+    "plans": {
+      "free":    { "count": 1240000, "pct": 43.6 },
+      "starter": { "count": 480000,  "pct": 16.9 },
+      "pro":     { "count": 1000000, "pct": 35.1 },
+      "premium": { "count": 127000,  "pct": 4.5  }
+    }
+  }
+}
+6️⃣ Global Search (Top Search Bar)
+GET /api/admin/search?q=john&limit=5
+X-Admin-Token: securevpn-admin-2024
+Query Params:
+
+Param	Type	Required	Description
+q	string	✅ Yes	Search term (min 2 chars)
+limit	int	No (default: 5)	Max results per category
+Response:
+
+json
+{
+  "success": true,
+  "message": "OK",
+  "data": {
+    "query": "john",
+    "users": [
+      { "id": "uuid-here", "email": "john@example.com", "full_name": "John Doe", "plan": "pro" }
+    ],
+    "tickets": [
+      { "id": "uuid-here", "email": "john@example.com", "subject": "Billing issue", "status": "open" }
+    ],
+    "servers": [
+      { "id": "lon-1", "name": "London", "country": "United Kingdom", "flag": "🇬🇧", "is_online": true }
+    ]
+  }
+}
+7️⃣ Stats (Lightweight KPIs Only)
+GET /api/admin/stats
+X-Admin-Token: securevpn-admin-2024
+Response:
+
+json
+{
+  "success": true,
+  "message": "OK",
+  "data": {
+    "overview": {
+      "total_users": 2847000,
+      "paid_users": 1607000,
+      "free_users": 1240000,
+      "active_sessions": 84200,
+      "total_sessions": 9800000,
+      "sessions_today": 12400,
+      "online_servers": 127,
+      "total_servers": 130,
+      "offline_servers": 3,
+      "open_tickets": 234,
+      "active_subscriptions": 1607000,
+      "total_revenue_usd": 847000.00
+    },
+    "growth": {
+      "new_users_today": 1200,
+      "new_users_7d": 8400,
+      "new_users_30d": 36000
+    },
+    "bandwidth": {
+      "total_bytes_down": 9000000000000000,
+      "total_bytes_up": 3000000000000000,
+      "total_bytes": 12000000000000000,
+      "total_gb": 11175.2
+    },
+    "plan_breakdown": {
+      "free": 1240000,
+      "starter": 480000,
+      "pro": 1000000,
+      "premium": 127000
+    }
+  }
+}
+📋 Quick Reference for Frontend Team
+#	Endpoint	Auth	Use For
+1	POST /api/admin/login	❌	Get admin token
+2	GET /api/admin/dashboard	✅	Full dashboard (1 call)
+3	GET /api/admin/analytics/mrr-trend?months=12	✅	MRR line chart
+4	GET /api/admin/analytics/traffic-today	✅	Hourly bar chart
+5	GET /api/admin/analytics/plan-distribution	✅	Donut chart
+6	GET /api/admin/search?q={query}	✅	Search bar
+7	GET /api/admin/stats	✅	KPI cards only
+Frontend Tip: Use endpoint #2 (/api/admin/dashboard) on initial page load — it returns everything in a single request. Then poll /api/admin/analytics/traffic-today every 60s to keep the traffic chart live.
+
+
+
+👥 User Management Page — API Reference
+Base URL: http://localhost:5001
+Auth Header: X-Admin-Token: securevpn-admin-2024
+
+1️⃣ List Users (Main Table)
+GET /api/admin/users
+X-Admin-Token: securevpn-admin-2024
+Query Params:
+
+Param	Type	Description
+search	string	Search by name or email
+plan	string	free | starter | pro | premium
+status	string	active | inactive | suspended | past_due
+page	int	Default: 1
+limit	int	Default: 20
+Example: GET /api/admin/users?search=alex&plan=pro&page=1&limit=20
+
+Response:
+
+json
+{
+  "success": true,
+  "message": "OK",
+  "data": {
+    "users": [
+      {
+        "id": "550e8400-e29b-41d4-a716-446655440000",
+        "display_id": "U-10021",
+        "email": "alex.t@gmail.com",
+        "full_name": "Alex Thompson",
+        "plan": "pro",
+        "subscription_status": "active",
+        "email_verified": true,
+        "country": null,
+        "country_code": null,
+        "spend": 47.88,
+        "device_count": 3,
+        "active_sessions": 1,
+        "total_sessions": 24,
+        "last_active": "2026-04-20T14:30:00",
+        "created_at": "2024-03-14T10:00:00",
+        "bandwidth_used_bytes": 5368709120,
+        "bandwidth_limit_bytes": 107374182400
+      }
+    ],
+    "total": 2847291,
+    "total_paid": 1607291,
+    "total_free": 1240000,
+    "page": 1,
+    "limit": 20,
+    "pages": 142365
+  }
+}
+2️⃣ User Detail (View Modal)
+GET /api/admin/users/{user_id}
+X-Admin-Token: securevpn-admin-2024
+Example: GET /api/admin/users/550e8400-e29b-41d4-a716-446655440000
+
+Response:
+
+json
+{
+  "success": true,
+  "message": "OK",
+  "data": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "display_id": "U-10021",
+    "full_name": "Alex Thompson",
+    "email": "alex.t@gmail.com",
+    "plan": "pro",
+    "subscription_status": "active",
+    "email_verified": true,
+    "country": null,
+    "country_code": null,
+    "joined": "2024-03-14",
+    "last_active": "2026-04-20T14:30:00",
+    "device_count": 3,
+    "spend": 47.88,
+    "bandwidth_used_bytes": 5368709120,
+    "bandwidth_used_gb": 5.0,
+    "bandwidth_limit_bytes": 107374182400,
+    "two_fa_enabled": false,
+    "active_sessions": 1,
+    "total_sessions": 24,
+    "sessions": [ "...last 10 sessions..." ],
+    "subscriptions": [ "...all subscriptions..." ],
+    "devices": [ "...registered devices..." ]
+  }
+}
+3️⃣ Create User (+ Add User Button)
+POST /api/admin/users
+X-Admin-Token: securevpn-admin-2024
+Content-Type: application/json
+Body:
+
+json
+{
+  "email": "newuser@example.com",
+  "password": "SecurePass123",
+  "full_name": "New User",
+  "plan": "free"
+}
+Response:
+
+json
+{
+  "success": true,
+  "message": "User created successfully",
+  "data": { "...full user object..." }
+}
+4️⃣ Edit User (Edit Button)
+PATCH /api/admin/users/{user_id}
+X-Admin-Token: securevpn-admin-2024
+Content-Type: application/json
+Body (all fields optional):
+
+json
+{
+  "full_name": "Alex Thompson Jr.",
+  "plan": "premium",
+  "email_verified": true
+}
+Response:
+
+json
+{
+  "success": true,
+  "message": "User updated successfully",
+  "data": { "...updated user object..." }
+}
+5️⃣ Upgrade Plan (Upgrade Plan Button)
+POST /api/admin/users/{user_id}/upgrade-plan
+X-Admin-Token: securevpn-admin-2024
+Content-Type: application/json
+Body:
+
+json
+{
+  "plan": "premium"
+}
+Response:
+
+json
+{
+  "success": true,
+  "message": "Plan changed from pro → premium",
+  "data": { "...updated user object..." }
+}
+6️⃣ Reset Password (Reset PW Button)
+POST /api/admin/users/{user_id}/reset-password
+X-Admin-Token: securevpn-admin-2024
+Content-Type: application/json
+Body:
+
+json
+{
+  "new_password": "TempPass123"
+}
+Leave new_password empty ("") to auto-generate a secure password.
+
+Response:
+
+json
+{
+  "success": true,
+  "message": "Password reset successfully",
+  "data": {
+    "email": "alex.t@gmail.com",
+    "new_password": "TempPass123",
+    "note": "Share this password with the user securely. They should change it on login."
+  }
+}
+7️⃣ Suspend User (Suspend Button)
+POST /api/admin/users/{user_id}/suspend
+X-Admin-Token: securevpn-admin-2024
+Response:
+
+json
+{
+  "success": true,
+  "message": "User alex.t@gmail.com suspended. 2 active session(s) terminated.",
+  "data": {
+    "revoked_sessions": 2,
+    "user": { "...updated user object with status: suspended..." }
+  }
+}
+8️⃣ Unsuspend User
+POST /api/admin/users/{user_id}/unsuspend
+X-Admin-Token: securevpn-admin-2024
+Response:
+
+json
+{
+  "success": true,
+  "message": "User alex.t@gmail.com unsuspended successfully",
+  "data": { "...user object with status: inactive..." }
+}
+9️⃣ Delete User (Delete Button)
+DELETE /api/admin/users/{user_id}
+X-Admin-Token: securevpn-admin-2024
+Response:
+
+json
+{
+  "success": true,
+  "message": "User alex.t@gmail.com permanently deleted",
+  "data": null
+}
+🔟 Export CSV (CSV Button)
+GET /api/admin/users/export?plan=pro&status=active
+X-Admin-Token: securevpn-admin-2024
+Returns a downloadable .csv file directly. No JSON response.
+
+CSV Columns: ID, Display ID, Email, Full Name, Plan, Status, Email Verified, Bandwidth Used (GB), Joined, Last Login, Total Spend (USD)
+
+1️⃣1️⃣ User's Sessions
+GET /api/admin/users/{user_id}/sessions?active_only=false&page=1&limit=20
+X-Admin-Token: securevpn-admin-2024
+1️⃣2️⃣ User's Devices
+GET /api/admin/users/{user_id}/devices
+X-Admin-Token: securevpn-admin-2024
+📋 Quick Reference — User Management
+#	Method	Endpoint	Button/Action
+1	GET	/api/admin/users	Page load / search / filter
+2	GET	/api/admin/users/{id}	View button
+3	POST	/api/admin/users	+ Add User
+4	PATCH	/api/admin/users/{id}	Edit button
+5	POST	/api/admin/users/{id}/upgrade-plan	Upgrade Plan
+6	POST	/api/admin/users/{id}/reset-password	Reset PW
+7	POST	/api/admin/users/{id}/suspend	Suspend
+8	POST	/api/admin/users/{id}/unsuspend	Unsuspend
+9	DELETE	/api/admin/users/{id}	Delete
+10	GET	/api/admin/users/export	CSV button
+11	GET	/api/admin/users/{id}/sessions	Sessions tab
+12	GET	/api/admin/users/{id}/devices	Devices tab
+Note on country field: The DB has no GeoIP — returns null for now. Wire up a GeoIP library (like geoip2) on the IP stored in device login to populate this in production.
+
+
+
+💳 Subscriptions & Billing Page — API Reference
+Base URL: http://localhost:5001 | Auth: X-Admin-Token: securevpn-admin-2024
+
+1️⃣ KPI Cards (Page Load)
+GET /api/admin/subscriptions/kpis
+X-Admin-Token: securevpn-admin-2024
+Response:
+
+json
+{
+  "success": true,
+  "data": {
+    "active_pro": 1480000,
+    "active_starter": 0,
+    "active_team": 127291,
+    "free_plan": 1240000,
+    "pending_refunds": 48,
+    "total_mrr_usd": 847000.00,
+    "arr_usd": 10164000.00
+  }
+}
+2️⃣ Active Tab (Default)
+GET /api/admin/subscriptions?status=active&page=1&limit=20
+X-Admin-Token: securevpn-admin-2024
+Query Params:
+
+Param	Description
+status	active | cancelled | expired | past_due
+plan	starter | pro | premium
+search	Search by user email or name
+page / limit	Pagination
+Response:
+
+json
+{
+  "success": true,
+  "data": {
+    "subscriptions": [
+      {
+        "id": "sub-uuid",
+        "plan": "pro",
+        "plan_label": "Pro",
+        "billing_cycle": "monthly",
+        "amount_usd": 3.99,
+        "amount_label": "$3.99/mo",
+        "status": "active",
+        "next_billing": "2026-05-21",
+        "started_at": "2026-04-21T00:00:00",
+        "expires_at": "2026-05-21T00:00:00",
+        "cancelled_at": null,
+        "stripe_subscription_id": "sub_xxx",
+        "user_email": "alex.t@gmail.com",
+        "user_name": "Alex Thompson",
+        "user_plan": "pro"
+      }
+    ],
+    "total": 1607291,
+    "page": 1,
+    "limit": 20,
+    "pages": 80365,
+    "counts": {
+      "active": 1607291,
+      "cancelled": 12400,
+      "expired": 3200,
+      "past_due": 48
+    }
+  }
+}
+3️⃣ Refunds Tab
+GET /api/admin/subscriptions/refunds?page=1&limit=20
+X-Admin-Token: securevpn-admin-2024
+Response:
+
+json
+{
+  "success": true,
+  "data": {
+    "refunds": [ "...same sub object structure..." ],
+    "total": 48,
+    "page": 1,
+    "limit": 20,
+    "pages": 3,
+    "total_at_risk_usd": 191.52
+  }
+}
+4️⃣ Plans Tab
+GET /api/admin/subscriptions/plans
+X-Admin-Token: securevpn-admin-2024
+Response:
+
+json
+{
+  "success": true,
+  "data": [
+    { "plan": "free",    "label": "Free",    "amount_label": "$0/mo",      "amount_usd": 0,    "active_subscriptions": 0,       "total_users": 1240000, "mrr_usd": 0 },
+    { "plan": "starter", "label": "Starter", "amount_label": "$3.99/mo",   "amount_usd": 3.99, "active_subscriptions": 0,       "total_users": 0,       "mrr_usd": 0 },
+    { "plan": "pro",     "label": "Pro",     "amount_label": "$7.99/mo",   "amount_usd": 7.99, "active_subscriptions": 1480000, "total_users": 1480000, "mrr_usd": 11827200 },
+    { "plan": "premium", "label": "Team",    "amount_label": "$7.99/seat", "amount_usd": 7.99, "active_subscriptions": 127291,  "total_users": 127291,  "mrr_usd": 1017054 }
+  ]
+}
+5️⃣ Billing History Tab
+GET /api/admin/subscriptions/billing-history?days=90&page=1&limit=20
+X-Admin-Token: securevpn-admin-2024
+Query Params:
+
+Param	Default	Description
+days	90	Look back N days
+plan	—	Filter by plan
+page/limit	1/20	Pagination
+Response:
+
+json
+{
+  "success": true,
+  "data": {
+    "history": [
+      {
+        "...same sub fields...",
+        "transaction_date": "2026-04-21"
+      }
+    ],
+    "total": 4820,
+    "total_collected_usd": 19231.80,
+    "period_days": 90
+  }
+}
+6️⃣ Cancel Subscription (Cancel Button)
+POST /api/admin/subscriptions/{sub_id}/cancel
+X-Admin-Token: securevpn-admin-2024
+No body needed.
+
+json
+{
+  "success": true,
+  "message": "Subscription cancelled. User downgraded to free plan.",
+  "data": { "...updated subscription..." }
+}
+7️⃣ Refund Subscription (Refund Button)
+POST /api/admin/subscriptions/{sub_id}/refund
+X-Admin-Token: securevpn-admin-2024
+No body needed.
+
+json
+{
+  "success": true,
+  "message": "Subscription marked for refund. Process the actual refund via Stripe dashboard.",
+  "data": { "...subscription with status: past_due..." }
+}
+⚠️ This marks the record in DB. To issue the actual refund, also call Stripe manually from the Stripe dashboard.
+
+8️⃣ Upgrade Subscription (Upgrade Button)
+POST /api/admin/subscriptions/{sub_id}/upgrade?plan=premium
+X-Admin-Token: securevpn-admin-2024
+Query Param: plan = starter | pro | premium
+
+json
+{
+  "success": true,
+  "message": "Subscription upgraded from pro → premium",
+  "data": { "...updated subscription..." }
+}
+9️⃣ Revenue Summary
+GET /api/admin/subscriptions/revenue
+X-Admin-Token: securevpn-admin-2024
+json
+{
+  "success": true,
+  "data": {
+    "total_mrr_usd": 847000.00,
+    "total_arr_usd": 10164000.00,
+    "plan_breakdown": {
+      "starter": { "active_count": 0,       "total_revenue": 0 },
+      "pro":     { "active_count": 1480000, "total_revenue": 11827200 },
+      "premium": { "active_count": 127291,  "total_revenue": 1017054 }
+    },
+    "all_time_revenue": 45000000.00
+  }
+}
+📋 Quick Reference — Subscriptions & Billing
+#	Method	Endpoint	Used For
+1	GET	/api/admin/subscriptions/kpis	4 KPI cards
+2	GET	/api/admin/subscriptions?status=active	Active tab
+3	GET	/api/admin/subscriptions/refunds	Refunds tab
+4	GET	/api/admin/subscriptions/plans	Plans tab
+5	GET	/api/admin/subscriptions/billing-history	Billing History tab
+6	GET	/api/admin/subscriptions/revenue	Revenue summary
+7	GET	/api/admin/subscriptions/{id}	Single detail
+8	POST	/api/admin/subscriptions/{id}/cancel	Cancel button
+9	POST	/api/admin/subscriptions/{id}/refund	Refund button
+10	POST	/api/admin/subscriptions/{id}/upgrade?plan=X	Upgrade button
+11	PATCH	/api/admin/subscriptions/{id}	Manual override
+
+
+💰 Revenue & Finance Page — API Reference
+Base URL: http://localhost:5001 | Auth: X-Admin-Token: securevpn-admin-2024
+
+1️⃣ Full Page (Single Call — Recommended)
+GET /api/admin/revenue/overview
+X-Admin-Token: securevpn-admin-2024
+Response:
+
+json
+{
+  "success": true,
+  "data": {
+    "generated_at": "2026-04-27T11:15:00Z",
+    "kpis": {
+      "mrr": {
+        "value_usd": 847320.00,
+        "delta_usd": 2010.00,
+        "delta_pct": 2.01,
+        "label": "MRR",
+        "note": "vs Last month"
+      },
+      "arr": {
+        "value_usd": 10167840.00,
+        "yoy_pct": 8.4,
+        "label": "ARR",
+        "note": "YoY"
+      },
+      "churn_rate": {
+        "value_pct": 2.3,
+        "delta_pct": -0.7,
+        "label": "Churn Rate",
+        "improved": true
+      },
+      "avg_ltv": {
+        "value_usd": 91.40,
+        "label": "Avg LTV"
+      }
+    },
+    "mrr_growth": [
+      { "month": "Jan", "year": 2026, "label": "Jan 2026", "mrr": 500000.00, "new_revenue": 8200.00 },
+      { "month": "Feb", "year": 2026, "label": "Feb 2026", "mrr": 580000.00, "new_revenue": 12400.00 },
+      { "month": "Mar", "year": 2026, "label": "Mar 2026", "mrr": 650000.00, "new_revenue": 15000.00 },
+      { "month": "Apr", "year": 2026, "label": "Apr 2026", "mrr": 847320.00, "new_revenue": 19800.00 }
+    ],
+    "revenue_by_plan": [
+      {
+        "plan": "pro",
+        "label": "Pro",
+        "price_label": "$3.99/mo",
+        "user_count": 1480000,
+        "active_subs": 1480000,
+        "mrr_usd": 5905200.00,
+        "mrr_pct": 87.0,
+        "mrr_label": "$5.91M"
+      },
+      {
+        "plan": "premium",
+        "label": "Team",
+        "price_label": "$7.99/seat",
+        "user_count": 127291,
+        "active_subs": 127291,
+        "mrr_usd": 1017054.09,
+        "mrr_pct": 12.0,
+        "mrr_label": "$1.02M"
+      },
+      {
+        "plan": "free",
+        "label": "Free",
+        "price_label": "$0/mo",
+        "user_count": 1240000,
+        "active_subs": 0,
+        "mrr_usd": 0.00,
+        "mrr_pct": 0.0,
+        "mrr_label": "$0"
+      }
+    ],
+    "payment_methods": {
+      "note": "Requires Stripe integration.",
+      "data": null,
+      "stripe_integration_required": true
+    }
+  }
+}
+2️⃣ KPI Cards Only
+GET /api/admin/revenue/kpis
+X-Admin-Token: securevpn-admin-2024
+json
+{
+  "success": true,
+  "data": {
+    "mrr":        { "value_usd": 847320.00, "delta_usd": 2010.00, "delta_pct": 2.01 },
+    "arr":        { "value_usd": 10167840.00, "yoy_pct": 8.4 },
+    "churn_rate": { "value_pct": 2.3, "delta_pct": -0.7, "improved": true },
+    "avg_ltv":    { "value_usd": 91.40 }
+  }
+}
+3️⃣ MRR Growth Chart
+GET /api/admin/revenue/mrr-growth?months=12
+X-Admin-Token: securevpn-admin-2024
+json
+{
+  "success": true,
+  "data": [
+    { "month": "Jan", "year": 2026, "label": "Jan 2026", "mrr": 500000.00, "new_revenue": 8200.00 },
+    "... 12 monthly points total ..."
+  ]
+}
+4️⃣ Revenue by Plan
+GET /api/admin/revenue/by-plan
+X-Admin-Token: securevpn-admin-2024
+json
+{
+  "success": true,
+  "data": {
+    "total_mrr_usd": 847320.00,
+    "plans": [
+      { "plan": "pro",     "label": "Pro",  "price_label": "$3.99/mo",   "user_count": 1480000, "mrr_usd": 5905200, "mrr_pct": 87.0, "mrr_label": "$5.91M" },
+      { "plan": "premium", "label": "Team", "price_label": "$7.99/seat", "user_count": 127291,  "mrr_usd": 1017054, "mrr_pct": 12.0, "mrr_label": "$1.02M" },
+      { "plan": "free",    "label": "Free", "price_label": "$0/mo",      "user_count": 1240000, "mrr_usd": 0,       "mrr_pct": 0.0,  "mrr_label": "$0" }
+    ]
+  }
+}
+5️⃣ Payment Methods
+GET /api/admin/revenue/payment-methods
+X-Admin-Token: securevpn-admin-2024
+json
+{
+  "success": true,
+  "data": {
+    "note": "Requires Stripe integration.",
+    "methods": null,
+    "stripe_integration_required": true
+  }
+}
+⚠️ Payment Methods needs Stripe: Real data (Visa 64%, PayPal 18%, etc.) comes from Stripe's charge objects. Once you're ready to integrate, I'll add a Stripe charge aggregation endpoint that pulls and caches this data.
+
+📋 Quick Reference — Revenue & Finance
+#	Method	Endpoint	Used For
+1	GET	/api/admin/revenue/overview	Full page (1 call)
+2	GET	/api/admin/revenue/kpis	4 KPI cards
+3	GET	/api/admin/revenue/mrr-growth?months=12	MRR Growth chart
+4	GET	/api/admin/revenue/by-plan	Revenue by Plan
+5	GET	/api/admin/revenue/payment-methods	Payment Methods
+Frontend Tip: Call /api/admin/revenue/overview on page load — returns everything in one request. Refresh KPIs with /api/admin/revenue/kpis every 5 mins.
+
+
+
+
+📋 PROMOTIONS & COUPONS — Full API Reference
+1️⃣ OVERVIEW — Load entire page in one call
+GET /api/admin/promotions/overview
+Headers:
+
+X-Admin-Token: securevpn-admin-2024
+Response:
+
+json
+{
+  "success": true,
+  "message": "OK",
+  "data": {
+    "generated_at": "2026-04-28T05:30:00Z",
+    "coupon_codes": [
+      {
+        "id": "uuid",
+        "code": "LAUNCH60",
+        "discount_type": "percent",
+        "discount_value": 60,
+        "discount_label": "60% off",
+        "plan": "Pro",
+        "uses": 8420,
+        "use_limit": 10000,
+        "uses_display": "8,420 / 10,000",
+        "status": "active",
+        "expires_at": "2026-06-30",
+        "created_at": "2026-01-01T00:00:00",
+        "created_by": "admin@atmosvpn.com"
+      }
+    ],
+    "referral_program": {
+      "active_referrers": 48221,
+      "total_referrals": 127441,
+      "conversions": 39112,
+      "commission_paid_usd": 312448.00,
+      "commission_rate_pct": 30.0,
+      "commission_rate_label": "30% of 1st payment"
+    },
+    "affiliate_program": {
+      "active_affiliates": 1240,
+      "affiliate_revenue_monthly_usd": 42441.00,
+      "top_commission_usd": 2841.00,
+      "avg_commission_usd": 34.20,
+      "payout_methods": "Crypto / Paypal",
+      "affiliates": [...]
+    }
+  }
+}
+2️⃣ COUPON CODES
+List All Coupons
+GET /api/admin/promotions/coupons
+Query Params (all optional):
+
+Param	Type	Example
+status	string	active | inactive | expired
+plan	string	pro
+search	string	LAUNCH
+page	int	1
+limit	int	50
+Example:
+
+GET /api/admin/promotions/coupons?status=active&page=1&limit=20
+Response:
+
+json
+{
+  "success": true,
+  "data": {
+    "coupons": [...],
+    "total": 4,
+    "page": 1,
+    "limit": 50,
+    "pages": 1,
+    "counts": {
+      "active": 3,
+      "inactive": 0,
+      "expired": 1
+    }
+  }
+}
+Create New Coupon (+ Create Coupon button)
+POST /api/admin/promotions/coupons
+Headers:
+
+X-Admin-Token: securevpn-admin-2024
+Content-Type: application/json
+Body (percent discount):
+
+json
+{
+  "code": "SUMMER50",
+  "discount_type": "percent",
+  "discount_value": 50,
+  "plan": "pro",
+  "use_limit": 1000,
+  "expires_at": "2026-12-31",
+  "created_by": "admin@atmosvpn.com"
+}
+Body (fixed $ discount):
+
+json
+{
+  "code": "TEAM2826",
+  "discount_type": "fixed",
+  "discount_value": 20,
+  "plan": "team",
+  "use_limit": 5000,
+  "expires_at": "2026-12-31",
+  "created_by": "admin@atmosvpn.com"
+}
+Body (unlimited / no expiry):
+
+json
+{
+  "code": "STUDENTS8",
+  "discount_type": "percent",
+  "discount_value": 50,
+  "plan": "pro",
+  "use_limit": null,
+  "expires_at": null,
+  "created_by": "admin@atmosvpn.com"
+}
+Field rules:
+
+Field	Required	Values
+code	✅	2–50 chars, auto-uppercased
+discount_type	✅	"percent" or "fixed"
+discount_value	✅	number > 0
+plan	❌	null = all plans
+use_limit	❌	null = unlimited
+expires_at	❌	"YYYY-MM-DD" or null
+Response 201:
+
+json
+{
+  "success": true,
+  "message": "Coupon created successfully",
+  "data": { "id": "uuid", "code": "SUMMER50", ... }
+}
+Get Single Coupon
+GET /api/admin/promotions/coupons/{coupon_id}
+Example:
+
+GET /api/admin/promotions/coupons/3fa85f64-5717-4562-b3fc-2c963f66afa6
+Update Coupon (✏️ edit button)
+PATCH /api/admin/promotions/coupons/{coupon_id}
+Body (send only fields to change):
+
+json
+{
+  "discount_type": "percent",
+  "discount_value": 70,
+  "plan": "pro",
+  "use_limit": 20000,
+  "expires_at": "2026-12-31",
+  "status": "active"
+}
+Delete Coupon (🗑️ delete button)
+DELETE /api/admin/promotions/coupons/{coupon_id}
+Response:
+
+json
+{
+  "success": true,
+  "message": "Coupon deleted successfully",
+  "data": { "id": "3fa85f64-..." }
+}
+Toggle Coupon Active ↔ Inactive (copy/toggle button)
+POST /api/admin/promotions/coupons/{coupon_id}/toggle
+No body needed. Response:
+
+json
+{
+  "success": true,
+  "message": "Coupon is now inactive",
+  "data": { "id": "...", "status": "inactive", ... }
+}
+⚠️ Expired coupons can't be toggled — update expires_at first.
+
+Validate Coupon at Checkout (frontend use)
+POST /api/admin/promotions/validate
+Body:
+
+json
+{
+  "code": "LAUNCH60",
+  "plan": "pro"
+}
+Response (valid):
+
+json
+{
+  "success": true,
+  "message": "Coupon is valid",
+  "data": {
+    "valid": true,
+    "code": "LAUNCH60",
+    "discount_type": "percent",
+    "discount_value": 60,
+    "discount_label": "60% off",
+    "message": "Coupon valid — 60% off"
+  }
+}
+Errors:
+
+HTTP	Reason
+404	Code not found
+410	Coupon is inactive/expired
+410	Usage limit reached
+422	Wrong plan restriction
+3️⃣ REFERRAL PROGRAM
+Get Referral Stats + List
+GET /api/admin/promotions/referrals
+Query Params (all optional):
+
+Param	Type	Example
+status	string	pending | converted | paid
+page	int	1
+limit	int	20
+Response:
+
+json
+{
+  "success": true,
+  "data": {
+    "stats": {
+      "active_referrers": 48221,
+      "total_referrals": 127441,
+      "conversions": 39112,
+      "commission_paid_usd": 312448.00,
+      "commission_rate_pct": 30.0,
+      "commission_rate_label": "30% of 1st payment"
+    },
+    "referrals": [
+      {
+        "id": "uuid",
+        "referrer_id": "uuid",
+        "referrer_email": "user@example.com",
+        "referrer_name": "John Doe",
+        "referred_id": "uuid",
+        "referred_email": "new@example.com",
+        "status": "converted",
+        "commission_usd": 9.99,
+        "signed_up_at": "2026-01-15T10:00:00",
+        "converted_at": "2026-01-16T14:00:00",
+        "commission_paid_at": null
+      }
+    ],
+    "total": 127441,
+    "page": 1,
+    "limit": 20,
+    "pages": 6373
+  }
+}
+Get Referral Commission Config (⚙️ Configure button)
+GET /api/admin/promotions/referrals/config
+Response:
+
+json
+{
+  "success": true,
+  "data": {
+    "commission_rate_pct": 30.0,
+    "commission_rate_label": "30% of 1st payment",
+    "note": "Update via PATCH /promotions/referrals/config. Set REFERRAL_COMMISSION_PCT env var to persist across restarts."
+  }
+}
+Update Referral Commission Rate (⚙️ Configure button)
+PATCH /api/admin/promotions/referrals/config
+Body:
+
+json
+{
+  "commission_rate_pct": 25.0
+}
+Response:
+
+json
+{
+  "success": true,
+  "message": "Commission rate updated to 25%",
+  "data": {
+    "commission_rate_pct": 25.0,
+    "commission_rate_label": "25% of 1st payment"
+  }
+}
+4️⃣ AFFILIATE PROGRAM
+List All Affiliates
+GET /api/admin/promotions/affiliates
+Query Params (all optional):
+
+Param	Type	Example
+status	string	active | inactive | suspended
+search	string	techguy
+page	int	1
+limit	int	20
+Response:
+
+json
+{
+  "success": true,
+  "data": {
+    "stats": {
+      "active_affiliates": 1240,
+      "affiliate_revenue_monthly_usd": 42441.00,
+      "top_commission_usd": 2841.00,
+      "avg_commission_usd": 34.20,
+      "payout_methods": "Crypto / Paypal"
+    },
+    "affiliates": [
+      {
+        "id": "uuid",
+        "name": "TechGuy YouTube",
+        "email": "techguy@youtube.com",
+        "affiliate_code": "TECHGUY_1234",
+        "status": "active",
+        "commission_type": "percent",
+        "commission_value": 30.0,
+        "commission_label": "30%",
+        "payout_method": "paypal",
+        "total_revenue_generated": 18400.00,
+        "total_commission_paid": 2841.00,
+        "total_conversions": 184,
+        "joined_at": "2025-01-10T00:00:00",
+        "last_active": "2026-04-20T00:00:00"
+      }
+    ],
+    "total": 1240,
+    "page": 1,
+    "limit": 20,
+    "pages": 62
+  }
+}
+Add Affiliate (+ Add Affiliate button)
+POST /api/admin/promotions/affiliates
+Body:
+
+json
+{
+  "name": "TechGuy YouTube",
+  "email": "techguy@youtube.com",
+  "affiliate_code": "TECHGUY",
+  "commission_type": "percent",
+  "commission_value": 30.0,
+  "payout_method": "paypal",
+  "payout_details": {
+    "paypal_email": "payments@techguy.com"
+  }
+}
+Minimal body (code auto-generated):
+
+json
+{
+  "name": "New Blogger",
+  "email": "blogger@example.com"
+}
+Field rules:
+
+Field	Required	Default	Values
+name	✅	—	any string
+email	✅	—	must be unique
+affiliate_code	❌	auto-gen	e.g. "TECHGUY"
+commission_type	❌	"percent"	"percent" | "fixed"
+commission_value	❌	30.0	number
+payout_method	❌	"paypal"	"paypal" | "crypto" | "bank"
+payout_details	❌	null	JSON object
+Response 201:
+
+json
+{
+  "success": true,
+  "message": "Affiliate added successfully",
+  "data": { "id": "uuid", "affiliate_code": "TECHGUY_7392", ... }
+}
+Get Single Affiliate
+GET /api/admin/promotions/affiliates/{affiliate_id}
+Update Affiliate
+PATCH /api/admin/promotions/affiliates/{affiliate_id}
+Body (send only fields to change):
+
+json
+{
+  "name": "Updated Name",
+  "status": "inactive",
+  "commission_type": "fixed",
+  "commission_value": 5.00,
+  "payout_method": "crypto",
+  "payout_details": {
+    "wallet_address": "0xABC123..."
+  }
+}
+Status values: active | inactive | suspended
+
+Delete Affiliate
+DELETE /api/admin/promotions/affiliates/{affiliate_id}
+Response:
+
+json
+{
+  "success": true,
+  "message": "Affiliate removed successfully",
+  "data": { "id": "uuid" }
+}
+🗺️ Quick Endpoint Map
+Action	Method	Endpoint
+Load full page	GET	/api/admin/promotions/overview
+List coupons	GET	/api/admin/promotions/coupons
+Create coupon	POST	/api/admin/promotions/coupons
+Get coupon	GET	/api/admin/promotions/coupons/{id}
+Edit coupon	PATCH	/api/admin/promotions/coupons/{id}
+Delete coupon	DELETE	/api/admin/promotions/coupons/{id}
+Toggle on/off	POST	/api/admin/promotions/coupons/{id}/toggle
+Validate at checkout	POST	/api/admin/promotions/validate
+Referral stats	GET	/api/admin/promotions/referrals
+Get config	GET	/api/admin/promotions/referrals/config
+Update commission %	PATCH	/api/admin/promotions/referrals/config
+List affiliates	GET	/api/admin/promotions/affiliates
+Add affiliate	POST	/api/admin/promotions/affiliates
+Get affiliate	GET	/api/admin/promotions/affiliates/{id}
+Edit affiliate	PATCH	/api/admin/promotions/affiliates/{id}
+Remove affiliate	DELETE	/api/admin/promotions/affiliates/{id}
+⚠️ Error Response Format (all errors)
+json
+{
+  "detail": "Coupon code 'LAUNCH60' already exists."
+}
+Code	Meaning
+401	Missing or wrong X-Admin-Token
+404	Record not found
+409	Duplicate (code/email already exists)
+410	Coupon expired or limit reached
+422	Validation error (wrong field values)
+📝 For Frontend team: Use GET /api/admin/promotions/overview on page load — it returns everything in one call. Use individual endpoints only for partial refreshes after create/edit/delete actions.
+
+
+
+
+
+
+🔐 Auth Header (all endpoints)
+X-Admin-Token: securevpn-admin-2024
+Base URL: http://localhost:5001
+
+🗺️ Quick Endpoint Map
+UI Element	Method	Endpoint
+Header KPI cards	GET	/api/admin/servers/overview
+Grid / Table list	GET	/api/admin/servers
++ Add Server	POST	/api/admin/servers
+Server card detail	GET	/api/admin/servers/{id}
+✏️ Edit button	PATCH	/api/admin/servers/{id}
+🗑️ Delete button	DELETE	/api/admin/servers/{id}
+↺ Restart button	POST	/api/admin/servers/{id}/restart
+Status badge change	PATCH	/api/admin/servers/{id}/status
+1️⃣ Overview — Header KPI Cards
+GET /api/admin/servers/overview
+Response:
+
+json
+{
+  "success": true,
+  "data": {
+    "generated_at": "2026-04-28T05:30:00Z",
+    "kpis": {
+      "total_servers": 130,
+      "online": 127,
+      "maintenance": 1,
+      "offline": 2,
+      "avg_load_pct": 58.0,
+      "total_capacity_mbps": 1300000,
+      "total_capacity_label": "1.3 Tbps",
+      "total_active_sessions": 312400
+    },
+    "subtitle": "127 online · 1 maintenance · 2 offline · 63 countries",
+    "regions": ["Australia", "Brazil", "France", "Germany", "India", "Japan", ...]
+  }
+}
+2️⃣ List Servers — Grid / Table View
+GET /api/admin/servers
+Query Params (all optional):
+
+Param	Type	Example	Description
+search	string	New York	Search name, city, country, IP, ID
+status	string	online	online | maintenance | offline
+region	string	United States	Filter by country name
+country_code	string	us	2-letter code
+online_only	bool	true	Shortcut for status=online
+page	int	1	
+limit	int	50	Max 200
+Example requests:
+
+GET /api/admin/servers                              ← all servers
+GET /api/admin/servers?status=online                ← only online
+GET /api/admin/servers?status=maintenance           ← in maintenance
+GET /api/admin/servers?search=london                ← search
+GET /api/admin/servers?region=Germany               ← by country
+GET /api/admin/servers?country_code=jp              ← by code
+GET /api/admin/servers?status=online&limit=20&page=2
+Response:
+
+json
+{
+  "success": true,
+  "data": {
+    "servers": [
+      {
+        "id": "nyc-1",
+        "name": "New York",
+        "city": "New York",
+        "country": "United States",
+        "country_code": "us",
+        "flag": "🇺🇸",
+        "ip_address": "103.21.244.1",
+        "ping_ms": 12,
+        "load_pct": 67,
+        "capacity_mbps": 10000,
+        "capacity_gbps": 10.0,
+        "is_online": true,
+        "status": "online",
+        "uptime_pct": 99.98,
+        "wg_port": 51820,
+        "max_peers": 500,
+        "current_peers": 48291,
+        "protocols": ["wireguard", "openvpn", "ikev2"],
+        "types": {
+          "streaming": true,
+          "gaming": false,
+          "crypto": false,
+          "p2p": true,
+          "dedicated_ip": false
+        },
+        "active_sessions": 48291,
+        "total_sessions": 942100,
+        "wg_public_key": "ABC123...",
+        "hetzner_server_id": "12345678",
+        "created_at": "2025-01-01T00:00:00"
+      }
+    ],
+    "total": 130,
+    "page": 1,
+    "limit": 50,
+    "pages": 3,
+    "counts": {
+      "online": 127,
+      "maintenance": 1,
+      "offline": 2
+    }
+  }
+}
+3️⃣ Add New Server — + Add Server button
+POST /api/admin/servers
+Content-Type: application/json
+Body (full):
+
+json
+{
+  "id": "mum-1",
+  "name": "Mumbai",
+  "city": "Mumbai",
+  "country": "India",
+  "country_code": "in",
+  "flag": "🇮🇳",
+  "ip_address": "103.21.244.99",
+  "ping_ms": 8,
+  "load_pct": 0,
+  "capacity_mbps": 10000,
+  "uptime_pct": 100.0,
+  "status": "online",
+  "max_peers": 500,
+  "wg_port": 51820,
+  "wg_public_key": "your_wireguard_public_key_here",
+  "hetzner_server_id": "98765432",
+  "protocols": "wireguard,openvpn,ikev2",
+  "is_streaming": true,
+  "is_gaming": false,
+  "is_crypto": false,
+  "is_p2p": false,
+  "is_dedicated_ip": false
+}
+Body (minimal):
+
+json
+{
+  "id": "par-1",
+  "name": "Paris",
+  "city": "Paris",
+  "country": "France",
+  "country_code": "fr"
+}
+Field rules:
+
+Field	Required	Default
+id	✅	— must be unique, e.g. "nyc-2"
+name	✅	—
+city	✅	—
+country	✅	—
+country_code	✅	— 2-letter lowercase
+status	❌	"online"
+capacity_mbps	❌	1000
+max_peers	❌	500
+wg_port	❌	51820
+Response 201:
+
+json
+{
+  "success": true,
+  "message": "Server added successfully",
+  "data": { "id": "mum-1", "name": "Mumbai", "status": "online", ... }
+}
+4️⃣ Get Single Server
+GET /api/admin/servers/{server_id}
+Example: GET /api/admin/servers/nyc-1
+
+Response (includes last 20 active sessions):
+
+json
+{
+  "success": true,
+  "data": {
+    "id": "nyc-1",
+    "name": "New York",
+    "status": "online",
+    "load_pct": 67,
+    "uptime_pct": 99.98,
+    "active_sessions": 48291,
+    "total_sessions": 942100,
+    "recent_sessions": [
+      {
+        "id": "uuid",
+        "mode": "streaming",
+        "protocol": "wireguard",
+        "started_at": "2026-04-28T10:00:00",
+        "bytes_down": 1073741824,
+        "bytes_up": 536870912,
+        "is_active": true
+      }
+    ],
+    ...
+  }
+}
+5️⃣ Edit Server — ✏️ Edit button
+PATCH /api/admin/servers/{server_id}
+Content-Type: application/json
+Body (send only fields to change):
+
+json
+{
+  "name": "New York #1",
+  "ip_address": "103.21.244.10",
+  "ping_ms": 10,
+  "capacity_mbps": 20000,
+  "load_pct": 55,
+  "uptime_pct": 99.97,
+  "max_peers": 1000,
+  "wg_port": 51820,
+  "wg_public_key": "newkey123...",
+  "is_streaming": true,
+  "is_gaming": true,
+  "is_p2p": false,
+  "is_crypto": false,
+  "protocols": "wireguard,openvpn"
+}
+6️⃣ Delete Server — 🗑️ Delete button
+DELETE /api/admin/servers/{server_id}
+Example: DELETE /api/admin/servers/nyc-1
+
+Response:
+
+json
+{
+  "success": true,
+  "message": "Server 'nyc-1' deleted successfully",
+  "data": {
+    "id": "nyc-1",
+    "had_active_sessions": 48291
+  }
+}
+7️⃣ Restart Server — ↺ Restart button
+POST /api/admin/servers/{server_id}/restart
+No body needed.
+
+What it does:
+
+Sets status → maintenance
+Terminates all active sessions (users reconnect after reboot)
+Resets load_pct and current_peers to 0
+Response:
+
+json
+{
+  "success": true,
+  "message": "Server 'New York' restart initiated — 48291 sessions terminated",
+  "data": {
+    "server_id": "nyc-1",
+    "status": "maintenance",
+    "sessions_terminated": 48291,
+    "restarted_at": "2026-04-28T05:35:00Z"
+  }
+}
+⚠️ Offline servers can't be restarted — set status to online first.
+
+8️⃣ Change Status — Status Badge
+PATCH /api/admin/servers/{server_id}/status
+Content-Type: application/json
+Body:
+
+json
+{ "status": "maintenance" }
+Values: "online" | "maintenance" | "offline"
+
+Response:
+
+json
+{
+  "success": true,
+  "message": "Server 'Amsterdam' status changed: online → maintenance",
+  "data": {
+    "server_id": "ams-1",
+    "old_status": "online",
+    "new_status": "maintenance",
+    "is_online": true
+  }
+}
+⚠️ Error Responses
+Code	Reason
+401	Missing / wrong X-Admin-Token
+404	Server ID not found
+409	Duplicate ID on POST, or restarting an offline server
+422	Invalid field values (e.g. status not in allowed list)
+📝 Frontend team: Call GET /api/admin/servers/overview first for the KPI cards, then GET /api/admin/servers for the grid. The status field drives the badge color: online = green, maintenance = yellow/orange, offline = red. The load_pct field drives the progress bar. uptime_pct drives the "Up: 99.98%" label.
+
+
+
+
+
+
+🚨 1. Get System Status Overview (Main Page Load)
+Fetches everything needed to render the entire page: the active incident banner, the service health list, and the recent incidents table.
+
+Endpoint: GET /api/admin/status/overview Headers: X-Admin-Token: <your_admin_password>
+
+Response:
+
+json
+{
+  "success": true,
+  "data": {
+    "active_incident": {
+      "id": "e0e37b25...",
+      "incident_number": "INC-199",
+      "title": "Zurich server hardware failure",
+      "affected_services": "Zurich Server",
+      "severity": "critical",
+      "status": "investigating",
+      "public_status_update": "We are investigating reports of...",
+      "created_at": "2026-04-21T07:30:00Z",
+      "resolved_at": null
+    },
+    "services": [
+      {
+        "id": "abc-123",
+        "service_name": "API Gateway",
+        "status": "online",
+        "updated_at": "2026-04-29T14:30:00Z"
+      },
+      {
+        "id": "def-456",
+        "service_name": "Amsterdam Cluster",
+        "status": "maint",
+        "updated_at": "2026-04-29T14:30:00Z"
+      }
+      // ... returns all 10 core services
+    ],
+    "incidents": [
+      // ... returns an array of the 20 most recent incidents to display in the list
+    ]
+  }
+}
+(Note: I added an automatic seeder. The very first time you call this endpoint, it will automatically populate your database with the 10 default services like "VPN Core", "API Gateway", etc., so you don't have to add them manually!)
+
+📝 2. Post New Incident
+Powers the "Post New Incident" modal. Automatically generates the sequential INC-XXX tag.
+
+Endpoint: POST /api/admin/status/incidents Headers: X-Admin-Token: <your_admin_password>
+
+Payload:
+
+json
+{
+  "title": "Connectivity issues — US East",
+  "affected_services": "NY-01, NY-02",
+  "severity": "Major",
+  "public_status_update": "We are investigating reports of high latency in the NY region."
+}
+Response: Returns the newly created incident object.
+
+🔄 3. Update / Resolve Incident
+Use this to mark an incident as resolved or to update the public message (from the "Resolve" or "Update" buttons).
+
+Endpoint: PATCH /api/admin/status/incidents/{incident_id} Headers: X-Admin-Token: <your_admin_password>
+
+Payload (To Resolve):
+
+json
+{
+  "status": "resolved"
+}
+Payload (To just update the text):
+
+json
+{
+  "public_status_update": "We have identified the root cause and are deploying a fix."
+}
+⚙️ 4. Update Service Health
+Use this if the frontend adds a way to manually toggle a service from "Online" to "Maint" or "Offline".
+
+Endpoint: PATCH /api/admin/status/services/{service_id} Headers: X-Admin-Token: <your_admin_password>
+
+Payload:
+
+json
+{
+  "status": "maint" 
+}
+(Valid statuses: online, maint, offline)
+
+Next Steps for the Frontend Team:
+Use API #1 when the SystemStatus component mounts to populate the active red banner at the top, the left-hand Service list, and the right-hand Incident list.
+Use API #2 when the user fills out the Post New Incident modal and clicks submit.
+The severity field strings are meant to map directly to the colors in your UI (e.g., "Critical" = red, "Major" = orange, "Minor" = blue).
+
+
+
+
+
+🛡️ 1. Get Security Center Overview
+This is a single "all-in-one" endpoint that powers the entire page (KPIs, the Events table, the IP Blocklist, and the state of all Security Settings).
+
+Endpoint: GET /api/admin/security/overview Headers: X-Admin-Token: <your_admin_password>
+
+Response:
+
+json
+{
+  "success": true,
+  "data": {
+    "kpis": {
+      "ips_blocked_24h": 341,
+      "failed_logins_24h": 2841,
+      "suspicious_accounts": 18,
+      "two_fa_adoption_pct": 68.4
+    },
+    "events": [
+      {
+        "id": "e456f789...",
+        "type": "Brute Force",
+        "ip": "45.132.22.11",
+        "user": "unknown",
+        "country": "RU",
+        "action": "IP Blocked",
+        "created_at": "2026-04-21T09:11:00Z"
+      }
+      // ... returns up to 20 most recent events
+    ],
+    "blocked_ips": [
+      {
+        "ip": "45.132.22.11",
+        "status": "Suspended",
+        "created_at": "2026-04-21T09:11:00Z"
+      }
+      // ... returns all blocked IPs for the list
+    ],
+    "settings": {
+      "2fa_required_admins": true,
+      "auto_block_10_fails": true,
+      "geo_block_high_risk": false,
+      "rate_limit_api": true,
+      "force_https": true,
+      "session_timeout": true
+    }
+  }
+}
+(Note: I added an automatic seeder. The very first time you call this, it populates the mock data you see in your Figma/UI design so the frontend team has immediate data to map to!)
+
+🛑 2. Block an IP Address
+Powers the "+ Block IP" button.
+
+Endpoint: POST /api/admin/security/blocked-ips Headers: X-Admin-Token: <your_admin_password>
+
+Payload:
+
+json
+{
+  "ip_address": "192.168.1.50"
+}
+Response: Returns the newly created Blocked IP object.
+
+✅ 3. Unblock an IP Address
+Powers the red "Unblock" buttons inside the IP Blocklist table.
+
+Endpoint: DELETE /api/admin/security/blocked-ips/{ip_address} Headers: X-Admin-Token: <your_admin_password> (Note: Pass the actual IP string as the path parameter, e.g., /api/admin/security/blocked-ips/45.132.22.11)
+
+Response:
+
+json
+{
+  "success": true,
+  "data": {
+    "message": "IP 45.132.22.11 unblocked"
+  }
+}
+⚙️ 4. Update Security Settings (Toggles)
+Powers the toggle switches in the bottom-right "Security Settings" panel.
+
+Endpoint: PATCH /api/admin/security/settings Headers: X-Admin-Token: <your_admin_password>
+
+Payload:
+
+json
+{
+  "key": "geo_block_high_risk",
+  "value": true
+}
+Response:
+
+json
+{
+  "success": true,
+  "data": {
+    "key": "geo_block_high_risk",
+    "value": true
+  }
+}
+Next Steps for the Frontend Team:
+Use API #1 when the SecurityCenter component mounts. Map data.settings directly to the checked state of your toggle switches.
+When a user clicks a toggle switch, optimistically update the UI and fire API #4 with the setting's key and new boolean value.
+To block an IP, show a simple prompt/modal and send the result to API #2.
+
+
+
+
+
+
+
+📊 1. Get Estimated Reach (Real-time Analytics)
+Fires when the page loads OR whenever the user changes the "Target Segment" dropdown. It dynamically calculates the estimated reach metrics shown in the bottom-right panel.
+
+Endpoint: GET /api/admin/notifications/reach-estimate?segment=All Users Headers: X-Admin-Token: <your_admin_password> (Query Parameter segment can be "All Users", "Free Users", "Premium Users", etc.)
+
+Response:
+
+json
+{
+  "success": true,
+  "data": {
+    "devices_targeted_raw": 2840000,
+    "devices_targeted_label": "2.84M",
+    "avg_open_rate_pct": 38,
+    "avg_ctr_pct": 12,
+    "delivery_time_estimate": "< 60 seconds",
+    "opt_out_rate_pct": 1.2
+  }
+}
+🚀 2. Create & Send Notification (Compose)
+Powers the "Send Now", "Save Draft", and "Schedule" functionality.
+
+Endpoint: POST /api/admin/notifications/campaigns Headers: X-Admin-Token: <your_admin_password>
+
+Payload (Send Immediately):
+
+json
+{
+  "title": "🔒 Your privacy matters",
+  "message": "We have updated our terms of service to provide even stronger privacy guarantees. Tap to read more.",
+  "target_segment": "All Users",
+  "is_draft": false,
+  "scheduled_for": null
+}
+Payload (Save as Draft):
+
+json
+{
+  "title": "Weekend Promo",
+  "message": "Get 50% off all Premium plans this weekend only!",
+  "target_segment": "Free Users",
+  "is_draft": true,
+  "scheduled_for": null
+}
+Payload (Schedule for later):
+
+json
+{
+  "title": "Maintenance Alert",
+  "message": "The NY server will be down for 10 minutes at midnight.",
+  "target_segment": "All Users",
+  "is_draft": false,
+  "scheduled_for": "2026-05-01T00:00:00Z"
+}
+Response: Returns the created campaign object:
+
+json
+{
+  "success": true,
+  "data": {
+    "id": "e456f789...",
+    "title": "🔒 Your privacy matters",
+    "message": "We have updated our terms...",
+    "target_segment": "All Users",
+    "status": "sent",  // "draft" | "scheduled" | "sent"
+    "scheduled_for": null,
+    "devices_targeted": 2840000,
+    "sent_at": "2026-04-29T14:30:00Z",
+    "created_at": "2026-04-29T14:30:00Z"
+  }
+}
+📜 3. List Campaign History
+Powers the "History" and "Scheduled" tabs at the top of the page.
+
+Endpoint: GET /api/admin/notifications/campaigns?status=sent Headers: X-Admin-Token: <your_admin_password> (Query Parameter status is optional. Pass draft, scheduled, or sent to filter.)
+
+Response:
+
+json
+{
+  "success": true,
+  "data": [
+    // Array of campaign objects formatted exactly like the POST response
+  ]
+}
+Next Steps for the Frontend Team:
+On page load, fetch API #1 (/reach-estimate) with default segment "All Users" to populate the bottom-right panel.
+When the user types in the Title or Message inputs, they should directly bind that state to the "Notification Preview" card to update it in real-time.
+Submitting the form calls API #2 (/campaigns). If they click "Send Now", set is_draft to false and scheduled_for to null.
+
+
+
+📧 1. Get Email Campaigns Overview
+This is a single endpoint that powers the entire page—both the KPI cards at the top and the Campaign table at the bottom.
+
+Endpoint: GET /api/admin/emails/overview Headers: X-Admin-Token: <your_admin_password>
+
+Response:
+
+json
+{
+  "success": true,
+  "data": {
+    "kpis": {
+      "sent_30d_label": "4.08M",
+      "avg_open_rate_pct": 31.2,
+      "avg_click_rate_pct": 8.4,
+      "unsubscribe_rate_pct": 0.3
+    },
+    "campaigns": [
+      {
+        "id": "abc123d...",
+        "name": "April Newsletter",
+        "status": "Sent",
+        "target_segment": "All Users",
+        "sent_label": "2.84M",
+        "open_rate_pct": 31.2,
+        "click_rate_pct": 8.4,
+        "date": "2026-04-15",
+        "created_at": "2026-04-15T08:00:00Z"
+      },
+      {
+        "id": "def456g...",
+        "name": "Refund Confirmation",
+        "status": "Automated",
+        "target_segment": "Churned",
+        "sent_label": "1.2K",
+        "open_rate_pct": 68.4,
+        "click_rate_pct": 22.1,
+        "date": "Ongoing",
+        "created_at": "2026-04-01T00:00:00Z"
+      }
+      // ... returns all campaigns
+    ]
+  }
+}
+(Note: Just like the others, I added an automatic database seeder. The very first time you hit this endpoint, it will generate the exact mock data from your Figma design so the frontend team has it right away.)
+
+Next Steps for the Frontend Team:
+Simply call API #1 (/overview) when the EmailCampaigns component mounts.
+Use data.kpis to populate the 4 large cards at the top.
+Map over data.campaigns to render the grid rows.
+Note how the API automatically handles formatting for the UI (e.g., returning "2.84M" instead of 2840000, and returning "-" for Draft open/click rates, matching your design perfectly!).
+
+
+
+
+
+
+
+
+
+📝 1. Get All Blog Posts
+Powers the main table on the "Posts" tab.
+
+Endpoint: GET /api/admin/blog/posts Headers: X-Admin-Token: <your_admin_password>
+
+Response:
+
+json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "abc-123-def...",
+      "title": "How to Choose the Best VPN in 2026",
+      "author": "Emily Ross",
+      "category": "Guides",
+      "status": "published",
+      "views": "34,221",
+      "date": "2026-04-15",
+      "created_at": "2026-04-15T10:00:00Z"
+    },
+    {
+      "id": "ghi-456-jkl...",
+      "title": "How to Use AtmosVPN on Your Router",
+      "author": "Tom Bridge",
+      "category": "Tutorial",
+      "status": "draft",
+      "views": "-",
+      "date": "2026-04-21",
+      "created_at": "2026-04-21T14:30:00Z"
+    }
+    // ... returns all blog posts
+  ]
+}
+(Note: I added an automatic seeder. The first time you hit this endpoint, it will seed the database with the exact dummy data shown in your design so the frontend team has it right away.)
+
+✍️ 2. Create a New Blog Post
+Powers the "+ New Post" button / modal.
+
+Endpoint: POST /api/admin/blog/posts Headers: X-Admin-Token: <your_admin_password>
+
+Payload:
+
+json
+{
+  "title": "What is Split Tunneling?",
+  "author": "Tom Bridge",
+  "category": "Technology",
+  "content": "Full article markdown or HTML goes here...",
+  "status": "draft" 
+}
+(Note: status defaults to "draft". Switch to "published" to automatically set the published_at timestamp).
+
+Response: Returns the newly created post object.
+
+🗑️ 3. Delete a Blog Post
+Powers the red "Trash" icon button on each row.
+
+Endpoint: DELETE /api/admin/blog/posts/{post_id} Headers: X-Admin-Token: <your_admin_password>
+
+Response:
+
+json
+{
+  "success": true,
+  "data": {
+    "message": "Post deleted successfully"
+  }
+}
+Next Steps for the Frontend Team:
+Simply call API #1 (/posts) when the BlogManagement component mounts.
+Map over data to render the table. Notice how the API automatically handles formatting the view counts (e.g., "34,221" or "-" if 0) so the frontend doesn't have to write logic for it.
+Wire the Trash button to API #3 using the post.id.
+
+
+
+
+
+🎧 1. Get Support Center Overview
+This endpoint handles both the top KPI cards and the main Ticket grid.
+
+Endpoint: GET /api/admin/tickets/overview Headers: X-Admin-Token: <your_admin_password>
+
+Response:
+
+json
+{
+  "success": true,
+  "data": {
+    "kpis": {
+      "open": 234,
+      "resolved_today": 142,
+      "in_progress": 87,
+      "urgent": 18
+    },
+    "tickets": [
+      {
+        "id": "1234abcd-...",
+        "ticket_number": "TK-ABCD",
+        "email": "alex.thompson@example.com",
+        "user_name": "Alex Thompson",
+        "subject": "Can't connect to US servers",
+        "category": "technical",
+        "status": "open",
+        "priority": "urgent",
+        "agent_name": "Sarah K.",
+        "created_display": "Apr 21 09:14",
+        "created_at": "2026-04-29T08:14:00Z",
+        "updated_at": "2026-04-29T08:14:00Z"
+      },
+      {
+        "id": "5678efgh-...",
+        "ticket_number": "TK-EFGH",
+        "email": "priya.sharma@example.com",
+        "user_name": "Priya Sharma",
+        "subject": "Adding more team seats",
+        "category": "billing",
+        "status": "in_progress",
+        "priority": "medium",
+        "agent_name": "Tom R.",
+        "created_display": "Apr 28 17:33",
+        "created_at": "2026-04-28T17:33:00Z",
+        "updated_at": "2026-04-28T17:33:00Z"
+      }
+      // ... returns top 20 recent tickets for the table
+    ]
+  }
+}
+(Note: I built a smart seeder into this endpoint. On the very first request, it will seed the database with the exact Dummy Data from your design so the frontend team has immediate data to test against!)
+
+✍️ 2. Update a Ticket (e.g. Assign Agent, Change Priority, or Resolve)
+(Already existed, but I updated it to accept the new fields)
+
+Endpoint: PATCH /api/admin/tickets/{id} Headers: X-Admin-Token: <your_admin_password>
+
+Payload: (Send only the fields you want to update)
+
+json
+{
+  "status": "in_progress",
+  "priority": "high",
+  "agent_name": "Sarah K."
+}
+Response: Returns the updated ticket object.
+
+Next Steps for the Frontend Team:
+Simply call API #1 (/overview) on mount.
+Use data.kpis to populate the 4 colored cards.
+Map over data.tickets to render the table rows. The endpoint already handles parsing the user_name from the email and formatting the created_display string (e.g., "Apr 21 09:14") so you don't need to write complex date logic on the frontend.
+When an admin selects a new Priority or Agent from the row dropdowns, fire off API #2 (PATCH) using the underlying ticket.id (the UUID, not the TK-XXXX string).
+
+
+
+
+
+
+
+
+💼 1. Get All Job Listings
+Powers the main grid on the page.
+
+Endpoint: GET /api/admin/careers/jobs Headers: X-Admin-Token: <your_admin_password>
+
+Response:
+
+json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "abc123d...",
+      "position": "Senior Backend Engineer",
+      "department": "Engineering",
+      "job_type": "Full-time",
+      "status": "Open",
+      "applicants_count": 142,
+      "created_at": "2026-04-20T10:00:00Z"
+    },
+    {
+      "id": "def456g...",
+      "position": "DevOps Engineer",
+      "department": "Engineering",
+      "job_type": "Full-time",
+      "status": "closed",
+      "applicants_count": 156,
+      "created_at": "2026-04-21T14:30:00Z"
+    }
+    // ... returns all job listings
+  ]
+}
+(Note: I added an automatic seeder here too. The very first time you hit this endpoint, it will seed the database with the exact Dummy Data shown in your design so the frontend team has it right away.)
+
+➕ 2. Create a New Job Listing
+Powers the "+ Post Job" button / modal.
+
+Endpoint: POST /api/admin/careers/jobs Headers: X-Admin-Token: <your_admin_password>
+
+Payload:
+
+json
+{
+  "position": "UX/UI Designer",
+  "department": "Product",
+  "job_type": "Full-time",
+  "status": "Open" 
+}
+(Note: job_type defaults to "Full-time" and status defaults to "Open" if omitted).
+
+Response: Returns the newly created job object (with applicants_count set to 0).
+
+🔄 3. Update Job Status
+Powers the "Close" and "Reopen" buttons in the Actions column.
+
+Endpoint: PATCH /api/admin/careers/jobs/{job_id}/status Headers: X-Admin-Token: <your_admin_password>
+
+Payload:
+
+json
+{
+  "status": "closed" 
+}
+(Valid values are "Open" or "closed")
+
+Response:
+
+json
+{
+  "success": true,
+  "data": {
+    "id": "abc123d...",
+    "position": "Senior Backend Engineer",
+    // ... updated job object
+  },
+  "message": "Job status updated successfully"
+}
+Next Steps for the Frontend Team:
+Call API #1 (/jobs) when the Careers component mounts.
+Map over the returned array to render the table. The styling of the status text (red for "Open", muted for "closed") can be mapped directly to job.status.
+Wire the "Close/Reopen" button to API #3 using the job.id. You can determine which button to show and which payload to send based on whether the current job.status is "Open" or "closed".
+
+
+
+
+
+
+📰 1. Get Press & Media Overview
+This endpoint returns both the "Press Coverage" and "Brand Assets / Media Kit" sections in one go, so the page loads instantly.
+
+Endpoint: GET /api/admin/press/overview Headers: X-Admin-Token: <your_admin_password>
+
+Response:
+
+json
+{
+  "success": true,
+  "data": {
+    "coverage": [
+      {
+        "id": "abc123d...",
+        "publication": "WIRED",
+        "headline": "The Best VPNs for 2025: AtmosVPN Tops Our Ranking",
+        "url": "https://wired.com",
+        "published_at": "2025-10-15T00:00:00",
+        "display_date": "OCT 2025",
+        "created_at": "2026-04-20T10:00:00Z"
+      },
+      {
+        "id": "def456g...",
+        "publication": "FORBES",
+        "headline": "Privacy Startup AtmosVPN Surpasses 2 Million Users",
+        "url": "https://forbes.com",
+        "published_at": "2025-08-05T00:00:00",
+        "display_date": "AUG 2025",
+        "created_at": "2026-04-21T14:30:00Z"
+      }
+      // ... returns all press coverage items
+    ],
+    "assets": [
+      {
+        "id": "hij789k...",
+        "name": "AtmosVPN Logo (SVG)",
+        "file_url": "/assets/logo.svg",
+        "created_at": "2026-04-20T10:00:00Z"
+      },
+      {
+        "id": "lmn012p...",
+        "name": "Brand Guidelines PDF",
+        "file_url": "/assets/guidelines.pdf",
+        "created_at": "2026-04-20T10:00:00Z"
+      }
+      // ... returns all brand assets
+    ]
+  }
+}
+(Note: I added an automatic seeder. The very first time you hit this endpoint, it will seed the database with the exact Dummy Data shown in your design so the frontend team has it right away.)
+
+➕ 2. Add New Press Coverage
+Powers the "+ Add Coverage" button / modal.
+
+Endpoint: POST /api/admin/press/coverage Headers: X-Admin-Token: <your_admin_password>
+
+Payload:
+
+json
+{
+  "publication": "TechCrunch",
+  "headline": "AtmosVPN Raises Series A to Expand Global Server Network",
+  "url": "https://techcrunch.com/...",
+  "published_at": "2026-01-12T00:00:00Z"
+}
+Response: Returns the newly created press coverage object.
+
+🗑️ 3. Delete Press Coverage
+Powers the red "Trash" button in the Actions column for Coverage.
+
+Endpoint: DELETE /api/admin/press/coverage/{coverage_id} Headers: X-Admin-Token: <your_admin_password>
+
+Response:
+
+json
+{
+  "success": true,
+  "data": {
+    "message": "Coverage deleted successfully"
+  }
+}
+🔄 4. Replace Brand Asset File
+Powers the "Replace" button in the Brand Assets section. (Assumes the file is uploaded to S3/Cloud Storage first, and this endpoint updates the DB record with the new URL).
+
+Endpoint: PUT /api/admin/press/assets/{asset_id} Headers: X-Admin-Token: <your_admin_password>
+
+Payload:
+
+json
+{
+  "file_url": "https://s3.amazonaws.com/your-bucket/new-guidelines-v2.pdf" 
+}
+Response: Returns the updated brand asset object.
+
+Next Steps for the Frontend Team:
+Call API #1 (/overview) when the PressMedia component mounts.
+Render the top list using data.coverage. Notice how the API sends display_date (e.g., "OCT 2025") pre-formatted to match the blue date badge in your UI next to the publication name!
+Render the bottom list using data.assets. The "Download" button can just be an anchor tag <a> with an href pointing to asset.file_url.
+
+
+
+
+
+
+
+
+
+
+📥 1. Get Downloads Overview
+This single endpoint powers the entire page. It calculates the KPIs at the top and provides the sorted data for the "Platform Releases" table.
+
+Endpoint: GET /api/admin/downloads/overview Headers: X-Admin-Token: <your_admin_password>
+
+Response:
+
+json
+{
+  "success": true,
+  "data": {
+    "kpis": {
+      "total_downloads_label": "6.24M",
+      "auto_update_rate_pct": 87.4,
+      "current_version": "v4.2.1",
+      "outdated_clients_label": "1 platform"
+    },
+    "releases": [
+      {
+        "id": "abc123d...",
+        "platform": "Windows",
+        "version": "4.2.1",
+        "size": "48.3 MB",
+        "downloads_label": "1.24M",
+        "released_at": "2026-04-01",
+        "status": "Current",
+        "changelog": null
+      },
+      {
+        "id": "def456g...",
+        "platform": "Android",
+        "version": "4.2.0",
+        "size": "28.7 MB",
+        "downloads_label": "2.12M",
+        "released_at": "2026-03-18",
+        "status": "Update Avail.",
+        "changelog": null
+      }
+      // ... returns all 6 platforms in the correct UI order
+    ]
+  }
+}
+(Note: I added the automatic seeder here too. The very first time you hit this endpoint, it will seed the database with the exact dummy data shown in your design so the frontend team can immediately bind it!)
+
+🚀 2. Publish Release Notes (Push Update)
+Powers the "Release Notes Editor" section at the bottom. When you fill in a new version (e.g. 4.2.2) and click "Publish Release Notes", this endpoint takes that version/changelog and applies it to all platforms that are currently marked as "Update Avail.", setting their status to "Current" and resetting their release date to today.
+
+Endpoint: POST /api/admin/downloads/releases Headers: X-Admin-Token: <your_admin_password>
+
+Payload:
+
+json
+{
+  "version": "4.2.2",
+  "changelog": "- Fixed reconnection issues on iOS 17\n- Improved WireGuard handshake speed\n- New: Quick Connect auto-selects fastest server"
+}
+Response:
+
+json
+{
+  "success": true,
+  "data": {
+    "updated_count": 1
+  },
+  "message": "Release notes published and platforms updated successfully."
+}
+Next Steps for the Frontend Team:
+Call API #1 (/overview) when the page loads. Bind data.kpis to the top 4 cards, and map over data.releases to render the table. The styling of the Status text (green vs yellow) should be mapped to the status string.
+When the user types into the Release Notes editor at the bottom and clicks "Publish Release Notes", send that form data to API #2 (POST /releases). Upon success, refetch API #1 to see the UI instantly update with the new version and reset the KPI "Outdated Clients" to 0!
+
+
+
+
+
+
+
+🛡️ 1. Get Admin Team Overview
+This single endpoint powers the entire page: the top 4 KPI cards, the "Admin Users" table, and the "Role Permissions Matrix" at the bottom.
+
+Endpoint: GET /api/admin/team/overview Headers: X-Admin-Token: <your_admin_password>
+
+Response:
+
+json
+{
+  "success": true,
+  "data": {
+    "kpis": {
+      "total_admins": 4,
+      "super_admins": 1,
+      "active_sessions": 3,
+      "two_fa_enabled_label": "3/4"
+    },
+    "users": [
+      {
+        "id": "1a2b3c...",
+        "name": "Shafi (You)",
+        "email": "super@atmosvpn.com",
+        "role": "Super Admin",
+        "two_fa_enabled": true,
+        "last_login": "Apr 21 10:30",
+        "status": "Active",
+        "created_at": "2026-04-20T10:00:00Z"
+      },
+      {
+        "id": "4d5e6f...",
+        "name": "Tom R.",
+        "email": "billing@atmosvpn.com",
+        "role": "Billing",
+        "two_fa_enabled": false,
+        "last_login": "Apr 21 08:12",
+        "status": "Active",
+        "created_at": "2026-04-21T14:30:00Z"
+      }
+      // ... returns all admin users
+    ],
+    "permissions_matrix": [
+      {
+        "permission": "User Management",
+        "super_admin": true,
+        "operations": true,
+        "billing": false,
+        "content": false
+      },
+      {
+        "permission": "Billing & Refunds",
+        "super_admin": true,
+        "operations": false,
+        "billing": true,
+        "content": false
+      }
+      // ... returns all 11 permission rows shown in your design
+    ]
+  }
+}
+(Note: I added an automatic seeder. The very first time you hit this endpoint, it will populate the database with the exact Dummy Data shown in your design so the frontend team has immediate parity.)
+
+➕ 2. Add New Admin User
+Powers the "+ Add Admin" button / modal.
+
+Endpoint: POST /api/admin/team/members Headers: X-Admin-Token: <your_admin_password>
+
+Payload:
+
+json
+{
+  "name": "Alex Jenkins",
+  "email": "alex@atmosvpn.com",
+  "role": "Operations",
+  "two_fa_enabled": false
+}
+(Note: Attempting to add an email that already exists will return a 400 error).
+
+Response: Returns the newly created AdminUser object.
+
+🗑️ 3. Delete Admin User
+Powers the red Trash button in the Actions column.
+
+Endpoint: DELETE /api/admin/team/members/{admin_id} Headers: X-Admin-Token: <your_admin_password>
+
+Response:
+
+json
+{
+  "success": true,
+  "data": {
+    "message": "Admin user deleted successfully"
+  }
+}
+Next Steps for the Frontend Team:
+Call API #1 (/overview) on page load.
+Top section: Bind the 4 keys in data.kpis directly to the KPI cards.
+Middle section: Map over data.users for the main table. Note that the API already pre-formats last_login into the friendly "Apr 21 10:30" string shown in the UI!
+Bottom section: Map over data.permissions_matrix to render the bottom table. For each row, simply check if row.super_admin, row.operations, etc. are true to decide whether to render the green checkmark (✔) or the muted dash (-).
+
+
+
+
+
+
+
+
+📝 1. Get Audit Logs (with Filtering)
+This endpoint handles the main table, the top search bar, the Admin dropdown filter, and the Date picker filter.
+
+Endpoint: GET /api/admin/audit/logs Headers: X-Admin-Token: <your_admin_password>
+
+Optional Query Parameters:
+
+search (string): Searches the action text (e.g. ?search=coupon).
+admin (string): Exact match on email (e.g. ?admin=super@atmosvpn.com). Send "All Admins" or omit to skip.
+date (string): Filters logs exactly matching a date (format YYYY-MM-DD or DD-MM-YYYY both supported, e.g. ?date=2026-04-21).
+Response:
+
+json
+{
+  "success": true,
+  "data": {
+    "filters": {
+      "admins": [
+        "super@atmosvpn.com",
+        "ops@atmosvpn.com",
+        "billing@atmosvpn.com",
+        "content@atmosvpn.com"
+      ]
+    },
+    "logs": [
+      {
+        "id": "123a456b...",
+        "admin_email": "super@atmosvpn.com",
+        "action": "Suspended user carlos.m@gmail.com",
+        "ip_address": "192.168.1.1",
+        "timestamp": "2026-04-21T10:32:00Z",
+        "display_time": "Apr 21 10:32"
+      },
+      {
+        "id": "789c012d...",
+        "admin_email": "ops@atmosvpn.com",
+        "action": "Set Amsterdam server to maintenance",
+        "ip_address": "192.168.1.2",
+        "timestamp": "2026-04-21T09:44:00Z",
+        "display_time": "Apr 21 09:44"
+      }
+      // ... returns up to 500 logs sorted newest to oldest
+    ]
+  }
+}
+(Note: As always, the very first request to this endpoint will safely seed the database with the exact Dummy Data from your design.)
+
+Next Steps for the Frontend Team:
+When the page loads, call GET /logs without any query parameters.
+Map over data.logs to render the table. Use log.display_time directly for the TIMESTAMP column so you don't need to write date formatting logic on the frontend.
+Use data.filters.admins to dynamically populate the <select> dropdown for the Admin filter.
+Whenever a user types in the search bar, selects an admin, or picks a date, simply append those values to the query string and refetch! (e.g., GET /logs?admin=ops@atmosvpn.com&search=maintenance)
+Export Log Button: For the UI button "Export Log", the frontend can just fetch this endpoint, parse the JSON into a CSV string on the client side, and trigger a browser download. No separate backend API is strictly necessary unless you want a massive bulk export!
+
+
+
+
+
+
+
+⚙️ 1. Get General Settings
+Powers the initial load of the form.
+
+Endpoint: GET /api/admin/settings Headers: X-Admin-Token: <your_admin_password>
+
+Response:
+
+json
+{
+  "success": true,
+  "data": {
+    "site_name": "AtmosVPN",
+    "support_email": "support@atmosvpn.com",
+    "sales_email": "sales@atmosvpn.com",
+    "twitter_handle": "@AtmosVPN",
+    "canonical_url": "https://atmosvpn.com/",
+    "app_version": "4.2.1",
+    "maintenance_mode": false,
+    "free_plan_enabled": true,
+    "new_signups": true,
+    "show_pricing": true,
+    
+    // ... plus some legacy pricing/session fields that are ignored by this specific UI tab
+  }
+}
+💾 2. Update General Settings
+Powers the "Save Changes" button. Only send the fields you want to update!
+
+Endpoint: PATCH /api/admin/settings Headers: X-Admin-Token: <your_admin_password>
+
+Payload:
+
+json
+{
+  "site_name": "AtmosVPN Pro",
+  "maintenance_mode": true,
+  "new_signups": false
+}
+Response: Returns the fully updated settings object so the frontend can sync its state.
+
+Next Steps for the Frontend Team:
+When the Settings component mounts, call API #1 (GET /settings). Use the returned data to populate the text inputs and the 4 toggle switches.
+When the user hits the "Save Changes" button, construct a JSON payload with the current state of all the form inputs and PATCH them to API #2.
+(Note: Since this relies on in-memory dictionary storage right now, the settings will reset if the Python server restarts. If you ever want me to convert this to use a Postgres database table instead, just let me know!)
+
+
