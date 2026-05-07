@@ -88,5 +88,13 @@ celery_app.conf.update(
     # redis_backend_use_ssl: SSL options for the result store connection
     # Only applied when REDIS_URL uses rediss:// (Upstash TLS)
     **({"broker_use_ssl": _ssl_options, "redis_backend_use_ssl": _ssl_options} if _is_tls else {}),
+
+    # ── Periodic Tasks (Celery Beat) ───────────────────────────────
+    beat_schedule={
+        "disconnect_expired_users_every_minute": {
+            "task": "tasks.disconnect_expired_users",
+            "schedule": 60.0,  # runs every 60 seconds
+        },
+    },
 )
 

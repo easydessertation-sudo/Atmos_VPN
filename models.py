@@ -22,6 +22,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from sqlalchemy.types import TypeDecorator, CHAR
+from sqlalchemy.pool import NullPool
 import uuid as _uuid
 
 # ─────────────────────────────────────────────────────────────────
@@ -80,21 +81,61 @@ DATABASE_URL = os.environ.get(
     f"sqlite:///{os.path.join(BASE_DIR, 'securevpn.db')}"   # fallback for local dev only
 )
 
-# SQLite needs check_same_thread=False; PostgreSQL does NOT need it
-_connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
+# ─────────────────────────────────────────────────────────────────
+# Connection pool strategy:
+#
+# Supabase port 6543 → PgBouncer in TRANSACTION mode.
+#   In transaction mode, PgBouncer is the pooler — SQLAlchemy's own
+#   connection pool conflicts with it, causing "server closed the
+#   connection unexpectedly" errors when stale sockets are reused.
+#   Fix: NullPool — SQLAlchemy opens/closes a real connection per
+#   request; PgBouncer transparently pools them on its side.
+#
+# Supabase port 5432 → direct Postgres (session mode).
+#   Here a regular pool_size + pool_pre_ping config is fine.
+#
+# SQLite (local dev) → no pool args at all.
+# ─────────────────────────────────────────────────────────────────
+_is_sqlite    = DATABASE_URL.startswith("sqlite")
+_is_pgbouncer = ":6543" in DATABASE_URL   # Supabase transaction-mode pooler
 
-# Connection pool settings (PostgreSQL only):
-#   pool_size=20     — keep 20 connections always open (reused across requests)
-#   max_overflow=40  — allow 40 extra connections under heavy load (total max 60)
-#   pool_pre_ping    — test each connection before using (prevents stale connection errors)
-#   pool_recycle=300 — replace connections every 5 minutes (Supabase idle timeout fix)
-_engine_kwargs = dict(connect_args=_connect_args)
-if not DATABASE_URL.startswith("sqlite"):
-    _engine_kwargs.update(
-        pool_size=20,
-        max_overflow=40,
+if _is_sqlite:
+    # SQLite needs check_same_thread=False; no pool config needed
+    _connect_args  = {"check_same_thread": False}
+    _engine_kwargs = dict(connect_args=_connect_args)
+
+elif _is_pgbouncer:
+    # Supabase PgBouncer (transaction mode) — let PgBouncer do the pooling.
+    # NullPool: SQLAlchemy never reuses connections; no stale-socket errors.
+    # keepalives force the OS to detect dead TCP sockets within ~15 s.
+    _connect_args = {
+        "connect_timeout": 10,
+        "keepalives":          1,
+        "keepalives_idle":     10,
+        "keepalives_interval": 5,
+        "keepalives_count":    3,
+    }
+    _engine_kwargs = dict(
+        connect_args=_connect_args,
+        poolclass=NullPool,        # no SQLAlchemy pool — PgBouncer handles it
+    )
+
+else:
+    # Direct Postgres (port 5432) — SQLAlchemy pool is fine here.
+    _connect_args = {
+        "connect_timeout": 10,
+        "keepalives":          1,
+        "keepalives_idle":     30,
+        "keepalives_interval": 5,
+        "keepalives_count":    3,
+    }
+    _engine_kwargs = dict(
+        connect_args=_connect_args,
+        pool_size=5,
+        max_overflow=5,
         pool_pre_ping=True,
-        pool_recycle=300,
+        pool_recycle=60,
+        pool_timeout=30,
     )
 
 engine       = create_engine(DATABASE_URL, **_engine_kwargs)
@@ -147,6 +188,9 @@ class User(Base):
     bandwidth_used_bytes  = Column(BigInteger, default=0)
     bandwidth_limit_bytes = Column(BigInteger, default=10_737_418_240)  # 10 GB default (free plan)
 
+    # Free tier VPN time tracking
+    vpn_expiration_time   = Column(DateTime, nullable=True)
+
     # Security & account
     email_verified = Column(Boolean, default=False)
     two_fa_enabled = Column(Boolean, default=False)
@@ -171,6 +215,11 @@ class User(Base):
     last_login   = Column(DateTime)
     last_seen_at = Column(DateTime)
 
+    # Google OAuth
+    google_id    = Column(String(100), nullable=True, unique=True, index=True)
+    avatar_url   = Column(String(500), nullable=True)
+    auth_provider = Column(String(20), default="email")  # "email" | "google"
+
     # Relationships — SQLAlchemy automatically loads related records
     # cascade="all, delete-orphan" means: if user is deleted, all their related records are deleted too
     vpn_configs   = relationship("VPNConfig",     back_populates="user", lazy="select", cascade="all, delete-orphan")
@@ -186,12 +235,15 @@ class User(Base):
             "id":                    str(self.id),
             "email":                 self.email,
             "full_name":             self.full_name,
+            "avatar_url":            self.avatar_url,
+            "auth_provider":         self.auth_provider or "email",
             "plan":                  self.plan,
             "plan_expires_at":       self.plan_expires_at.isoformat() if self.plan_expires_at else None,
             "subscription_status":   self.subscription_status,
             "stripe_customer_id":    self.stripe_customer_id,
             "bandwidth_used_bytes":  self.bandwidth_used_bytes,
             "bandwidth_limit_bytes": self.bandwidth_limit_bytes,
+            "vpn_expiration_time":   self.vpn_expiration_time.isoformat() if self.vpn_expiration_time else None,
             "email_verified":        self.email_verified,
             "two_fa_enabled":        self.two_fa_enabled,
             "created_at":            self.created_at.isoformat(),
@@ -664,3 +716,76 @@ def _time_ago(dt: datetime) -> str:
         return "Yesterday"
     days = seconds // 86400
     return f"{days} days ago"
+
+
+# ─────────────────────────────────────────────────────────────────
+# TABLE 11: plans
+# Editable plan configuration — managed by admin panel (port 5001).
+# vpn-backend reads from this table for GET /api/plans so that
+# any admin price/feature edit reflects on the user-facing app too.
+# ─────────────────────────────────────────────────────────────────
+class Plan(Base):
+    __tablename__ = "plans"
+
+    key         = Column(String(50), primary_key=True)   # "free"|"starter"|"pro"|"premium"
+    label       = Column(String(100), nullable=False)
+    description = Column(Text, nullable=True)
+    amount_usd  = Column(Float, default=0.0)
+    per         = Column(String(20), default="mo")       # "mo" | "seat" | "year"
+    currency    = Column(String(5), default="USD")
+
+    stripe_price_id_monthly = Column(String(100), nullable=True)
+    stripe_price_id_yearly  = Column(String(100), nullable=True)
+
+    max_devices     = Column(Integer, default=1)
+    bandwidth_gb    = Column(Integer, nullable=True)     # null = unlimited
+    server_count    = Column(Integer, nullable=True)
+    simultaneous    = Column(Integer, default=1)
+
+    has_streaming        = Column(Boolean, default=False)
+    has_p2p              = Column(Boolean, default=False)
+    has_dedicated_ip     = Column(Boolean, default=False)
+    has_ad_blocker       = Column(Boolean, default=True)
+    has_kill_switch      = Column(Boolean, default=True)
+    has_priority_support = Column(Boolean, default=False)
+
+    is_visible  = Column(Boolean, default=True)
+    is_default  = Column(Boolean, default=False)
+
+    updated_at  = Column(DateTime, default=datetime.utcnow)
+    created_at  = Column(DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            "key":            self.key,
+            "label":          self.label,
+            "description":    self.description,
+            "amount_usd":     self.amount_usd,
+            "amount_label":   (
+                f"${self.amount_usd:.2f}/{self.per}"
+                if self.amount_usd > 0
+                else f"$0/{self.per}"
+            ),
+            "per":            self.per,
+            "currency":       self.currency,
+            "stripe_price_id_monthly": self.stripe_price_id_monthly,
+            "stripe_price_id_yearly":  self.stripe_price_id_yearly,
+            "limits": {
+                "max_devices":  self.max_devices,
+                "bandwidth_gb": self.bandwidth_gb,
+                "server_count": self.server_count,
+                "simultaneous": self.simultaneous,
+            },
+            "features": {
+                "streaming":        self.has_streaming,
+                "p2p":              self.has_p2p,
+                "dedicated_ip":     self.has_dedicated_ip,
+                "ad_blocker":       self.has_ad_blocker,
+                "kill_switch":      self.has_kill_switch,
+                "priority_support": self.has_priority_support,
+            },
+            "is_visible": self.is_visible,
+            "is_default": self.is_default,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }

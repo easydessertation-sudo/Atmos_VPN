@@ -43,7 +43,7 @@ from sqlalchemy.orm import Session
 from models import (
     Base, engine, get_db,
     User, VPNServer, VPNSession, VPNConfig, IPPool, UsageLog,
-    Device, Subscription, SupportTicket, Notification
+    Device, Subscription, SupportTicket, Notification, Plan
 )
 from wireguard import (
     claim_ip_from_pool, release_ip_to_pool,
@@ -79,6 +79,13 @@ app.add_middleware(
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# ─────────────────────────────────────────────────────────────────
+# Health Check
+# ─────────────────────────────────────────────────────────────────
+@app.get("/", tags=["Health"])
+def root():
+    return {"status": "ok", "service": "AtmosVPN API", "version": "2.0.0"}
 
 # ─────────────────────────────────────────────────────────────────
 # JWT Config
@@ -462,6 +469,12 @@ class SupportTicketRequest(BaseModel):
     category: str = "general"
 
 
+class PushTokenRequest(BaseModel):
+    token:    str                      # FCM (Android) or APNS (iOS) device token
+    platform: Optional[str] = "unknown"  # android | ios | web
+    device_name: Optional[str] = None
+
+
 class AdminUpdateUserRequest(BaseModel):
     plan:      Optional[str] = None
     full_name: Optional[str] = None
@@ -722,6 +735,245 @@ def apply_reset_password(request: Request, body: ResetPasswordRequest, db: Sessi
     db.commit()
 
     return success(msg="Your password has been successfully reset. You may now login.")
+
+
+# ─────────────────────────────────────────────────────────────────
+# Google OAuth Routes
+# ─────────────────────────────────────────────────────────────────
+#
+# FLOW:
+#   1. Frontend calls GET /api/auth/google/url
+#      → Gets back the Google login redirect URL
+#      → Frontend redirects user to that URL
+#
+#   2. Google redirects to frontend callback (e.g. /auth/google/callback?code=xxx)
+#
+#   3. Frontend sends the code to POST /api/auth/google/callback
+#      → Backend exchanges code for Google user info
+#      → Creates account if new user, or logs in existing user
+#      → Returns access_token + refresh_token (same as email login)
+#
+# Alternative (mobile/SPA):
+#   Use POST /api/auth/google/verify with the id_token from Google SDK
+#   (Google One Tap / Android / iOS flows)
+# ─────────────────────────────────────────────────────────────────
+
+GOOGLE_CLIENT_ID     = os.environ.get("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+GOOGLE_REDIRECT_URI  = os.environ.get("GOOGLE_REDIRECT_URI", "http://localhost:3000/auth/google/callback")
+
+GOOGLE_AUTH_URL  = "https://accounts.google.com/o/oauth2/v2/auth"
+GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
+
+
+class GoogleCallbackBody(BaseModel):
+    code: str                               # Authorization code from Google redirect
+
+
+class GoogleTokenBody(BaseModel):
+    id_token: str                           # ID token from Google SDK (One Tap / mobile)
+
+
+def _upsert_google_user(google_user: dict, db: Session, request: Request):
+    """
+    Given verified Google user info dict, find or create the local User row.
+    Returns (user, is_new_user).
+    """
+    google_id = google_user["id"]
+    email     = google_user.get("email", "").strip().lower()
+    name      = google_user.get("name", "")
+    avatar    = google_user.get("picture", "")
+
+    # 1. Already signed in with Google before?
+    user = db.query(User).filter_by(google_id=google_id).first()
+
+    if not user:
+        # 2. Same email registered via email/password?  Link accounts.
+        user = db.query(User).filter_by(email=email).first()
+        if user:
+            user.google_id     = google_id
+            user.avatar_url    = avatar
+            user.auth_provider = "google"
+        else:
+            # 3. Brand new user — create account (no password)
+            user = User(
+                email         = email,
+                full_name     = name,
+                password_hash = bcrypt.hash(secrets.token_hex(32)),  # random unusable password
+                google_id     = google_id,
+                avatar_url    = avatar,
+                auth_provider = "google",
+                email_verified = True,           # Google emails are pre-verified
+                plan          = "free",
+            )
+            db.add(user)
+
+    user.last_login = datetime.utcnow()
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@app.get("/api/auth/google/url", tags=["Auth"])
+def google_auth_url():
+    """
+    Step 1 — Get the Google OAuth redirect URL.
+    Frontend opens this URL in a browser (redirect or popup).
+
+    Returns:
+      url: Full Google OAuth consent screen URL
+    """
+    if not GOOGLE_CLIENT_ID:
+        raise HTTPException(
+            status_code=503,
+            detail="Google OAuth not configured. Set GOOGLE_CLIENT_ID in .env"
+        )
+
+    import urllib.parse
+    params = {
+        "client_id":     GOOGLE_CLIENT_ID,
+        "redirect_uri":  GOOGLE_REDIRECT_URI,
+        "response_type": "code",
+        "scope":         "openid email profile",
+        "access_type":   "offline",
+        "prompt":        "select_account",
+    }
+    url = GOOGLE_AUTH_URL + "?" + urllib.parse.urlencode(params)
+    return success({
+        "url":          url,
+        "redirect_uri": GOOGLE_REDIRECT_URI,
+    })
+
+
+@app.post("/api/auth/google/callback", tags=["Auth"])
+def google_callback(
+    body:    GoogleCallbackBody,
+    request: Request,
+    db:      Session = Depends(get_db),
+):
+    """
+    Step 2 — Exchange the authorization code for user info.
+    Called by the frontend after Google redirects back with ?code=...
+
+    Body:
+      code: The authorization code from Google's redirect URL query param
+
+    Returns:
+      Same token format as /api/auth/login
+    """
+    import requests as _requests
+
+    if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
+        raise HTTPException(status_code=503, detail="Google OAuth not configured")
+
+    # Exchange code for tokens
+    token_response = _requests.post(GOOGLE_TOKEN_URL, data={
+        "code":          body.code,
+        "client_id":     GOOGLE_CLIENT_ID,
+        "client_secret": GOOGLE_CLIENT_SECRET,
+        "redirect_uri":  GOOGLE_REDIRECT_URI,
+        "grant_type":    "authorization_code",
+    })
+
+    if not token_response.ok:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Failed to exchange code with Google: {token_response.text}"
+        )
+
+    token_data = token_response.json()
+    access_token_google = token_data.get("access_token")
+
+    if not access_token_google:
+        raise HTTPException(status_code=400, detail="Google did not return an access token")
+
+    # Fetch user profile
+    userinfo_response = _requests.get(
+        GOOGLE_USERINFO_URL,
+        headers={"Authorization": f"Bearer {access_token_google}"}
+    )
+
+    if not userinfo_response.ok:
+        raise HTTPException(status_code=400, detail="Failed to fetch user info from Google")
+
+    google_user = userinfo_response.json()
+
+    if not google_user.get("verified_email"):
+        raise HTTPException(status_code=400, detail="Google account email is not verified")
+
+    user = _upsert_google_user(google_user, db, request)
+
+    return success(
+        {
+            "user":          user.to_dict(),
+            "access_token":  create_access_token(user.id),
+            "refresh_token": create_refresh_token(user.id),
+            "is_new_user":   user.created_at == user.last_login,
+            "plan_limits":   PLAN_LIMITS.get(user.plan, PLAN_LIMITS["free"]),
+        },
+        msg="Google sign-in successful",
+    )
+
+
+@app.post("/api/auth/google/verify", tags=["Auth"])
+def google_verify_token(
+    body:    GoogleTokenBody,
+    request: Request,
+    db:      Session = Depends(get_db),
+):
+    """
+    Alternative — Verify a Google ID token directly (for mobile/SPA Google One Tap).
+
+    Use this when:
+    - Android / iOS app using Google Sign-In SDK
+    - Web app using Google One Tap (credential response)
+    - The frontend already has an id_token from Google's JS library
+
+    Body:
+      id_token: The credential / id_token from Google Sign-In SDK
+
+    Returns:
+      Same token format as /api/auth/login
+    """
+    from google.oauth2 import id_token as google_id_token
+    from google.auth.transport import requests as google_requests
+
+    if not GOOGLE_CLIENT_ID:
+        raise HTTPException(status_code=503, detail="Google OAuth not configured")
+
+    try:
+        idinfo = google_id_token.verify_oauth2_token(
+            body.id_token,
+            google_requests.Request(),
+            GOOGLE_CLIENT_ID,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=f"Invalid Google token: {str(e)}")
+
+    google_user = {
+        "id":             idinfo["sub"],
+        "email":          idinfo.get("email", ""),
+        "name":           idinfo.get("name", ""),
+        "picture":        idinfo.get("picture", ""),
+        "verified_email": idinfo.get("email_verified", False),
+    }
+
+    if not google_user["verified_email"]:
+        raise HTTPException(status_code=400, detail="Google account email is not verified")
+
+    user = _upsert_google_user(google_user, db, request)
+
+    return success(
+        {
+            "user":          user.to_dict(),
+            "access_token":  create_access_token(user.id),
+            "refresh_token": create_refresh_token(user.id),
+            "is_new_user":   user.created_at == user.last_login,
+            "plan_limits":   PLAN_LIMITS.get(user.plan, PLAN_LIMITS["free"]),
+        },
+        msg="Google sign-in successful",
+    )
 
 
 
@@ -990,31 +1242,69 @@ def provision(
     db.refresh(config)
 
 
-    # ── Step 5: Queue background Celery task to SSH-add peer ──────
-    # This runs in the background — we don't wait for it
-    # The user gets their config immediately without waiting for SSH
-    job_id = str(_uuid.uuid4())
-    add_wireguard_peer.delay(
-        job_id=job_id,
-        server_ip=server.ip_address or "0.0.0.0",
-        public_key=body.public_key,
-        assigned_ip=ip_entry.ip_address,
-        config_id=new_config_id,
-    )
+    # ── Step 5: Add WireGuard peer (SSH directly, then Celery as backup) ────
+    #
+    # WHY DIRECT SSH FIRST:
+    #   Celery worker may not be running in all environments.
+    #   If we only use .delay(), the peer never gets added to the server
+    #   → tunnel connects but server drops all traffic → no internet.
+    #   We SSH directly here (synchronous, takes 1–3s) so the peer is
+    #   guaranteed to be added before we return the config to the user.
+    #
+    # WHY ALSO CELERY:
+    #   Celery retries if SSH failed transiently, and handles remove-peer
+    #   cleanup reliably.
+    import asyncio as _asyncio
+    import json as _json
+    from tasks import _ssh_add_peer
+
+    job_id      = str(_uuid.uuid4())
+    server_ip   = server.ip_address or "0.0.0.0"
+    peer_status = "provisioning"
+
+    if server_ip != "0.0.0.0" and os.environ.get("WG_SIMULATION", "true").lower() != "true":
+        try:
+            # Run async SSH function in a new event loop (we're in a sync FastAPI handler)
+            loop   = _asyncio.new_event_loop()
+            result = loop.run_until_complete(
+                _ssh_add_peer(server_ip, body.public_key, ip_entry.ip_address)
+            )
+            loop.close()
+            if result:
+                peer_status = "active"
+                logger.info(f"[Provision] Peer added directly via SSH for config {new_config_id}")
+        except Exception as ssh_err:
+            logger.warning(f"[Provision] Direct SSH peer add failed ({ssh_err}) — queuing Celery retry")
+
+    # Always also queue Celery for retries / persistence
+    try:
+        add_wireguard_peer.delay(
+            job_id=job_id,
+            server_ip=server_ip,
+            public_key=body.public_key,
+            assigned_ip=ip_entry.ip_address,
+            config_id=new_config_id,
+        )
+    except Exception:
+        pass  # Celery not available — direct SSH was already done above
 
     # ── Step 6: Generate and return the .conf file ─────────────────
     config_content = generate_wg_config(server, ip_entry.ip_address)
 
+    plan_limits = PLAN_LIMITS.get(user.plan, PLAN_LIMITS["free"])
+
     return success({
-        "config_id":   new_config_id,
-        "assigned_ip": ip_entry.ip_address,
-        "server":      server.to_dict(),
-        "wg_config":   config_content,
-        "job_id":      job_id,
-        "status":      "provisioning",
-        "message":     (
-            "Config ready. WireGuard peer is being added to the server in background. "
-            "Import wg_config into your WireGuard app now — it will connect within seconds."
+        "config_id":        new_config_id,
+        "assigned_ip":      ip_entry.ip_address,
+        "server":           server.to_dict(),
+        "wg_config":        config_content,
+        "job_id":           job_id,
+        "status":           peer_status,   # "active" if SSH worked, "provisioning" if queued
+        "speed_limit_mbps": plan_limits.get("speed_mbps"),
+        "message":          (
+            "VPN peer added — import wg_config into WireGuard now. Internet will work immediately."
+            if peer_status == "active"
+            else "Config ready. Peer is being added in background — connect in ~10 seconds."
         ),
     }, msg="VPN provisioned")
 
@@ -1350,6 +1640,40 @@ def check_provisioning_job(job_id: str):
     return success(status)
 
 
+@app.get("/api/vpn/session-time", tags=["VPN"])
+def get_session_time(user: User = Depends(get_current_user)):
+    """
+    Returns the remaining seconds of VPN time for a free-tier user.
+    """
+    if not user.vpn_expiration_time:
+        return success({"remaining_seconds": 0})
+    
+    now = datetime.utcnow()
+    if user.vpn_expiration_time < now:
+        return success({"remaining_seconds": 0})
+        
+    remaining = int((user.vpn_expiration_time - now).total_seconds())
+    return success({"remaining_seconds": remaining})
+
+
+@app.post("/api/rewards/watch-ad", tags=["Rewards"])
+def watch_ad(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """
+    Called when the frontend verifies an AdMob ad was watched.
+    Adds 45 minutes to the user's current vpn_expiration_time.
+    """
+    now = datetime.utcnow()
+    
+    if not user.vpn_expiration_time or user.vpn_expiration_time < now:
+        user.vpn_expiration_time = now + timedelta(minutes=45)
+    else:
+        user.vpn_expiration_time += timedelta(minutes=45)
+        
+    db.commit()
+    remaining = int((user.vpn_expiration_time - now).total_seconds())
+    return success({"remaining_seconds": remaining}, msg="Added 45 minutes of VPN time!")
+
+
 @app.get("/api/vpn/history", tags=["VPN"])
 def session_history(
     limit: int = 20,
@@ -1385,8 +1709,50 @@ def get_bandwidth_usage(user: User = Depends(get_current_user)):
 # Subscription / Billing Routes
 # ─────────────────────────────────────────────────────────────────
 @app.get("/api/plans", tags=["Billing"])
-def get_plans():
-    """Return all available plans and their prices."""
+def get_plans(db: Session = Depends(get_db)):
+    """
+    Return all available plans and their prices.
+    Reads from the plans DB table (editable via admin panel).
+    Falls back to built-in PLANS config if DB table is empty.
+    """
+    db_plans = db.query(Plan).order_by(Plan.amount_usd).all()
+
+    if db_plans:
+        # Build response from DB — reflects any admin edits instantly
+        result = {}
+        for p in db_plans:
+            if not p.is_visible:
+                continue
+            result[p.key] = {
+                "name":             p.label,
+                "description":      p.description,
+                "monthly_usd":      p.amount_usd,
+                "per":              p.per,
+                "currency":         p.currency,
+                # Limits
+                "bandwidth_gb":     p.bandwidth_gb,
+                "speed_mbps":       None,            # controlled by PLAN_LIMITS internally
+                "devices":          p.max_devices,
+                "simultaneous":     p.simultaneous,
+                "server_locations": p.server_count,
+                "dedicated_ip":     p.has_dedicated_ip,
+                # Feature flags
+                "features": {
+                    "streaming":        p.has_streaming,
+                    "p2p":              p.has_p2p,
+                    "dedicated_ip":     p.has_dedicated_ip,
+                    "ad_blocker":       p.has_ad_blocker,
+                    "kill_switch":      p.has_kill_switch,
+                    "priority_support": p.has_priority_support,
+                },
+                # Stripe IDs
+                "stripe_price_id_monthly": p.stripe_price_id_monthly,
+                "stripe_price_id_yearly":  p.stripe_price_id_yearly,
+                "updated_at": p.updated_at.isoformat() if p.updated_at else None,
+            }
+        return success(result)
+
+    # Fallback: DB table not yet seeded — return built-in config
     return success(PLANS)
 
 
@@ -1692,6 +2058,65 @@ def get_referral_info(user: User = Depends(get_current_user)):
 # ─────────────────────────────────────────────────────────────────
 # Notifications Routes
 # ─────────────────────────────────────────────────────────────────
+
+@app.post("/api/notifications/register-token", tags=["Account"])
+def register_push_token(
+    body: PushTokenRequest,
+    user: User    = Depends(get_current_user),
+    db:   Session = Depends(get_db),
+):
+    """
+    Register a device push token for sending push notifications.
+
+    Called by the mobile app (Android/iOS) immediately after login
+    or when the OS grants push notification permission.
+
+    Stores the FCM (Android) or APNS (iOS) token on the Device record
+    so the backend can send targeted push notifications to this device.
+
+    Body:
+      token       — FCM or APNS device token (required)
+      platform    — "android" | "ios" | "web" (optional)
+      device_name — human-readable device label (optional)
+    """
+    if not body.token or len(body.token.strip()) < 10:
+        raise HTTPException(status_code=400, detail="Invalid push token")
+
+    token    = body.token.strip()
+    platform = (body.platform or "unknown").lower()
+
+    # Find existing device record for this user+platform, or create one
+    device = db.query(Device).filter_by(
+        user_id=str(user.id),
+        platform=platform,
+    ).first()
+
+    if device:
+        # Update the push token on the existing device
+        device.device_fingerprint = token    # reuse device_fingerprint to store push token
+        device.last_seen          = datetime.utcnow()
+        if body.device_name:
+            device.name = body.device_name
+    else:
+        # Create a new device record with the push token
+        device = Device(
+            user_id=str(user.id),
+            name=body.device_name or f"{platform.capitalize()} Device",
+            platform=platform,
+            device_fingerprint=token,
+            last_seen=datetime.utcnow(),
+            is_trusted=True,
+        )
+        db.add(device)
+
+    db.commit()
+    logger.info(f"Push token registered for user {user.id} on {platform}")
+
+    return success(
+        {"registered": True, "platform": platform},
+        msg="Push token registered successfully",
+    )
+
 
 def _seed_default_notifications(user: User, db: Session):
     """
@@ -2049,20 +2474,36 @@ def run_speed_test(
         # Use actual server ping + small random variation for realism
         ping_ms = (server.ping_ms + random.randint(-3, 5)) if server else 999
 
-    # Simulate realistic speed test results
-    # In production: SSH into VPN server and run iperf3 or speedtest-cli
-    download_mbps = round(random.uniform(80.0, 150.0), 1)   # Download Mbps
-    upload_mbps   = round(random.uniform(15.0, 40.0),  1)   # Upload Mbps
-    latency_ms    = ping_ms + random.randint(0, 3)           # Latency ≈ Ping ± small jitter
+    # Simulate realistic speed test results capped by the user's plan speed limit.
+    # In production: SSH into VPN server and run iperf3 or speedtest-cli,
+    # then still cap the reported result to plan_limits["speed_mbps"].
+    plan_limits   = PLAN_LIMITS.get(user.plan, PLAN_LIMITS["free"])
+    speed_cap     = plan_limits.get("speed_mbps")   # None = unlimited
+
+    # Raw simulated speeds (what the server hardware can do)
+    raw_download = random.uniform(80.0, 150.0)
+    raw_upload   = random.uniform(15.0,  40.0)
+
+    # Apply plan speed cap — free=10 Mbps, starter=50, pro=200, premium=unlimited
+    if speed_cap is not None:
+        # Download capped to plan limit; upload ≈ 40% of download cap
+        download_mbps = round(min(raw_download, speed_cap), 1)
+        upload_mbps   = round(min(raw_upload,   speed_cap * 0.4), 1)
+    else:
+        download_mbps = round(raw_download, 1)
+        upload_mbps   = round(raw_upload,   1)
+
+    latency_ms = ping_ms + random.randint(0, 3)   # Latency ≈ Ping ± small jitter
 
     return success({
-        "download_mbps": download_mbps,   # shown in top gauge + bottom-left card
-        "upload_mbps":   upload_mbps,     # shown in bottom-right card
-        "ping_ms":       ping_ms,         # shown in bottom-left card (Ping)
-        "latency_ms":    latency_ms,      # shown in bottom-right card (Latency)
-        "connected":     session is not None,
-        "server":        server.to_dict() if server else None,
-        "tested_at":     datetime.utcnow().isoformat() + "Z",
+        "download_mbps":    download_mbps,   # shown in top gauge + bottom-left card
+        "upload_mbps":      upload_mbps,     # shown in bottom-right card
+        "ping_ms":          ping_ms,         # shown in bottom-left card (Ping)
+        "latency_ms":       latency_ms,      # shown in bottom-right card (Latency)
+        "speed_limit_mbps": speed_cap,       # None = unlimited — useful for UI cap indicator
+        "connected":        session is not None,
+        "server":           server.to_dict() if server else None,
+        "tested_at":        datetime.utcnow().isoformat() + "Z",
         "note": (
             "Live values from VPN server"
             if session

@@ -132,39 +132,63 @@ async def _ssh_add_peer(server_ip: str, public_key: str, assigned_ip: str) -> bo
     Actual SSH logic to add a WireGuard peer.
     Uses asyncssh to connect to the server and run wg commands.
 
-    IMPORTANT: "wg-quick save wg0" MUST be run after wg set.
-    Without it, all peer configs are lost on server reboot.
+    Auth priority:
+      1. Per-server password from VPN_SERVER_PASSWORDS env var (JSON map)
+      2. SSH key from WG_SSH_KEY_PATH env var
+
+    NOTE: SaveConfig=false is set in wg0.conf, so we manually append
+    the peer to the config file to survive reboots.
     """
-    SSH_KEY_PATH = os.environ.get("WG_SSH_KEY_PATH", "~/.ssh/id_rsa")
+    import json
     SSH_USER     = os.environ.get("WG_SSH_USER", "root")
+    SSH_KEY_PATH = os.environ.get("WG_SSH_KEY_PATH", "~/.ssh/id_rsa")
+
+    # Per-server password map: {"1.2.3.4": "password", ...}
+    passwords_raw = os.environ.get("VPN_SERVER_PASSWORDS", "{}")
+    try:
+        server_passwords = json.loads(passwords_raw)
+    except Exception:
+        server_passwords = {}
+
+    ssh_password = server_passwords.get(server_ip)
 
     # ── SIMULATION MODE ──────────────────────────────────────────
-    # When WG_SIMULATION=true (default for dev), we skip real SSH.
-    # Remove this block when you have real WireGuard servers.
     if os.environ.get("WG_SIMULATION", "true").lower() == "true":
         logger.info(f"[SIMULATION] Would run on {server_ip}:")
         logger.info(f"  wg set wg0 peer {public_key} allowed-ips {assigned_ip}/32")
-        logger.info(f"  wg-quick save wg0")
-        await asyncio.sleep(1)   # simulate SSH delay
+        await asyncio.sleep(1)
         return True
     # ─────────────────────────────────────────────────────────────
 
-    # ── REAL SSH (uncomment when you have WireGuard servers) ─────
     try:
         import asyncssh
-        async with asyncssh.connect(
-            server_ip,
+
+        # Build connect kwargs — prefer password if available, else SSH key
+        connect_kwargs = dict(
             username=SSH_USER,
-            client_keys=[SSH_KEY_PATH],
-            known_hosts=None,    # TODO: set known_hosts in production for security
-        ) as conn:
-            # Add the peer
+            known_hosts=None,
+            connect_timeout=30,
+        )
+        if ssh_password:
+            connect_kwargs["password"] = ssh_password
+        else:
+            connect_kwargs["client_keys"] = [os.path.expanduser(SSH_KEY_PATH)]
+
+        async with asyncssh.connect(server_ip, **connect_kwargs) as conn:
+            # Add peer to running WireGuard instance
             cmd = f"wg set wg0 peer {public_key} allowed-ips {assigned_ip}/32"
-            result = await conn.run(cmd, check=True)
+            await conn.run(cmd, check=True)
 
-            # CRITICAL: Save config so it survives server reboot
-            await conn.run("wg-quick save wg0", check=True)
+            # Persist peer to wg0.conf manually (SaveConfig=false prevents auto-overwrite)
+            persist_cmd = (
+                f"echo '' >> /etc/wireguard/wg0.conf && "
+                f"echo '[Peer]' >> /etc/wireguard/wg0.conf && "
+                f"echo 'PublicKey = {public_key}' >> /etc/wireguard/wg0.conf && "
+                f"echo 'AllowedIPs = {assigned_ip}/32' >> /etc/wireguard/wg0.conf"
+            )
+            await conn.run(persist_cmd, check=True)
 
+            logger.info(f"Peer {public_key[:16]}... added and persisted on {server_ip}")
             return True
     except Exception as e:
         logger.error(f"SSH error on {server_ip}: {e}")
@@ -228,29 +252,46 @@ def remove_wireguard_peer(self, job_id: str, server_ip: str, public_key: str,
 
 async def _ssh_remove_peer(server_ip: str, public_key: str) -> bool:
     """Actual SSH logic to remove a WireGuard peer."""
-    SSH_KEY_PATH = os.environ.get("WG_SSH_KEY_PATH", "~/.ssh/id_rsa")
+    import json
     SSH_USER     = os.environ.get("WG_SSH_USER", "root")
+    SSH_KEY_PATH = os.environ.get("WG_SSH_KEY_PATH", "~/.ssh/id_rsa")
+
+    passwords_raw = os.environ.get("VPN_SERVER_PASSWORDS", "{}")
+    try:
+        server_passwords = json.loads(passwords_raw)
+    except Exception:
+        server_passwords = {}
+    ssh_password = server_passwords.get(server_ip)
 
     # ── SIMULATION MODE ──────────────────────────────────────────
     if os.environ.get("WG_SIMULATION", "true").lower() == "true":
         logger.info(f"[SIMULATION] Would run on {server_ip}:")
         logger.info(f"  wg set wg0 peer {public_key} remove")
-        logger.info(f"  wg-quick save wg0")
         await asyncio.sleep(1)
         return True
     # ─────────────────────────────────────────────────────────────
 
     try:
         import asyncssh
-        async with asyncssh.connect(
-            server_ip,
+        connect_kwargs = dict(
             username=SSH_USER,
-            client_keys=[SSH_KEY_PATH],
             known_hosts=None,
-        ) as conn:
-            cmd = f"wg set wg0 peer {public_key} remove"
-            await conn.run(cmd, check=True)
-            await conn.run("wg-quick save wg0", check=True)
+            connect_timeout=30,
+        )
+        if ssh_password:
+            connect_kwargs["password"] = ssh_password
+        else:
+            connect_kwargs["client_keys"] = [os.path.expanduser(SSH_KEY_PATH)]
+
+        async with asyncssh.connect(server_ip, **connect_kwargs) as conn:
+            # Remove from running WireGuard
+            await conn.run(f"wg set wg0 peer {public_key} remove", check=True)
+            # Remove from wg0.conf (delete the 2-line [Peer] block for this key)
+            remove_cmd = (
+                f"sed -i '/^\\[Peer\\]/,/^$/{{/PublicKey = {public_key}/{{N;d}}}};/PublicKey = {public_key}/d' "
+                f"/etc/wireguard/wg0.conf"
+            )
+            await conn.run(remove_cmd)
             return True
     except Exception as e:
         logger.error(f"SSH error removing peer on {server_ip}: {e}")
@@ -309,3 +350,65 @@ def reset_user_bandwidth(user_id: str):
         return {"success": False, "error": str(e)}
     finally:
         db.close()
+
+
+# ─────────────────────────────────────────────────────────────────
+# TASK 5: Disconnect Expired Free Users
+#
+# Called by: Celery Beat scheduler (runs every 1 minute)
+# What it does:
+#   1. Queries DB for any active VPNSessions where user.vpn_expiration_time < NOW()
+#   2. Enqueues remove_wireguard_peer to kick them off the server
+#   3. Marks session as inactive
+# ─────────────────────────────────────────────────────────────────
+@celery_app.task(name="tasks.disconnect_expired_users")
+def disconnect_expired_users():
+    """Finds users whose VPN time has expired and removes their WireGuard peer."""
+    from models import SessionLocal, User, VPNSession, VPNServer, VPNConfig
+    import uuid
+    db = SessionLocal()
+    
+    try:
+        now = datetime.utcnow()
+        # Find active sessions for users whose time has expired
+        expired_sessions = db.query(VPNSession).join(User).filter(
+            VPNSession.is_active == True,
+            User.vpn_expiration_time < now
+        ).all()
+        
+        count = 0
+        for session in expired_sessions:
+            user = session.user
+            server = db.get(VPNServer, session.server_id)
+            config = db.get(VPNConfig, session.config_id) if session.config_id else None
+            
+            if server and config:
+                # 1. SSH remove peer
+                job_id = str(uuid.uuid4())
+                remove_wireguard_peer.delay(
+                    job_id=job_id,
+                    server_ip=server.ip_address,
+                    public_key=config.public_key,
+                    assigned_ip=config.assigned_ip,
+                    config_id=str(config.id)
+                )
+                logger.info(f"[Disconnect] Kicking off expired user {user.id} from {server.id}")
+            
+            # 2. Mark session as ended
+            session.is_active = False
+            session.ended_at = now
+            count += 1
+            
+        if count > 0:
+            db.commit()
+            logger.info(f"[Disconnect] Disconnected {count} expired sessions.")
+            
+        return {"success": True, "disconnected_count": count}
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"[Disconnect] Failed to process expired users: {e}")
+        return {"success": False, "error": str(e)}
+    finally:
+        db.close()
+

@@ -1459,18 +1459,4 @@ http://127.0.0.1:5000/api/servers?top=true
 | 43 | POST | `/api/speedtest/run` | ✅ | Health |
 
 
-| 44 | POST | `/api/admin/login` | Admin | Admin |
-| 45 | GET | `/api/admin/stats` | Admin | Admin |
-| 46 | GET | `/api/admin/users` | Admin | Admin |
-| 47 | GET | `/api/admin/users/{user_id}` | Admin | Admin |
-| 48 | PATCH | `/api/admin/users/{user_id}` | Admin | Admin |
-| 49 | DELETE | `/api/admin/users/{user_id}` | Admin | Admin |
-| 50 | DELETE | `/api/admin/users/{user_id}/suspend` | Admin | Admin |
-| 51 | GET | `/api/admin/servers` | Admin | Admin |
-| 52 | PATCH | `/api/admin/servers/{server_id}` | Admin | Admin |
-| 53 | GET | `/api/admin/sessions` | Admin | Admin |
-| 54 | GET | `/api/admin/tickets` | Admin | Admin |
-| 55 | PATCH | `/api/admin/tickets/{ticket_id}` | Admin | Admin |
-| 56 | GET | `/api/admin/settings` | Admin | Admin |
-| 57 | PATCH | `/api/admin/settings` | Admin | Admin |
-| T1 | POST | `/api/test/notifications/trigger` | ✅ | Test Only |
+

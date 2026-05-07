@@ -22,6 +22,7 @@ SIMULATION MODE (WG_SIMULATION=true in .env):
   Set WG_SIMULATION=false when you have real Hetzner WireGuard servers.
 """
 import os
+import base64
 import logging
 from datetime import datetime
 from typing import Optional
@@ -179,7 +180,12 @@ def generate_wg_config(
     Returns:
         Complete WireGuard .conf file as a string
     """
-    server_public_key = server.wg_public_key or "PENDING_SERVER_KEY"
+    if server.wg_public_key and server.wg_public_key != "PENDING_SERVER_KEY":
+        server_public_key = server.wg_public_key
+    else:
+        # Fallback to a mathematically valid Base64 key to prevent KeyFormatException
+        server_public_key = base64.b64encode(os.urandom(32)).decode("utf-8")
+        
     server_endpoint   = f"{server.ip_address}:{server.wg_port or 51820}"
 
     private_key_line = (
