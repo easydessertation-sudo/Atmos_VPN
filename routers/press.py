@@ -93,6 +93,67 @@ def delete_press_coverage(
     db.commit()
     return success({"message": "Coverage deleted successfully"})
 
+
+# ══════════════════════════════════════════════════════════════════
+# ─── BRAND ASSETS — List, Download & Replace ─────────────────────
+# ══════════════════════════════════════════════════════════════════
+
+@router.get("/assets")
+def list_brand_assets(
+    _: None = Depends(admin_required),
+    db: Session = Depends(get_db)
+):
+    """
+    List all brand assets with their IDs, names, and file URLs.
+    Used to populate the 'Brand Assets / Media Kit' section on page load.
+    """
+    assets = db.query(BrandAsset).order_by(BrandAsset.created_at.asc()).all()
+    return success([a.to_dict() for a in assets])
+
+
+@router.get("/assets/{asset_id}/download")
+def download_brand_asset(
+    asset_id: str,
+    _:  None    = Depends(admin_required),
+    db: Session = Depends(get_db),
+):
+    """
+    Download endpoint for the 'Download' button on each brand asset row.
+
+    Behaviour:
+      - If file_url is an absolute http/https URL → returns HTTP 302 redirect to it
+        (browser triggers the file download automatically).
+      - If file_url is a relative path → returns a JSON response with the file_url
+        so the frontend can build the full URL and trigger the download.
+
+    Production note:
+      Store files in S3 / Supabase Storage and generate a signed URL here
+      instead of returning the raw path.  Replace the redirect logic with:
+        signed_url = s3_client.generate_presigned_url(..., ExpiresIn=60)
+        return RedirectResponse(url=signed_url)
+    """
+    from fastapi.responses import RedirectResponse
+
+    asset = db.query(BrandAsset).filter(BrandAsset.id == asset_id).first()
+    if not asset:
+        raise HTTPException(status_code=404, detail="Brand asset not found")
+
+    file_url = asset.file_url
+
+    # Absolute URL → redirect so the browser downloads it directly
+    if file_url.startswith("http://") or file_url.startswith("https://"):
+        return RedirectResponse(url=file_url)
+
+    # Relative path → return metadata for the frontend to handle
+    return success({
+        "id":       str(asset.id),
+        "name":     asset.name,
+        "file_url": file_url,
+        "action":   "download",
+        "note":     "Use file_url to trigger download on the client side.",
+    }, f"Download ready: {asset.name}")
+
+
 @router.put("/assets/{asset_id}")
 def replace_brand_asset(
     asset_id: str,
@@ -100,12 +161,22 @@ def replace_brand_asset(
     _: None = Depends(admin_required),
     db: Session = Depends(get_db)
 ):
-    """Update/replace a brand asset file url."""
+    """
+    Replace a brand asset file (the 'Replace' button).
+
+    Body: { "file_url": "https://cdn.atmosvpn.com/brand/logo-v2.svg" }
+
+    Workflow in production:
+      1. Upload the new file to S3 / Supabase Storage (from the frontend or a
+         separate upload endpoint).
+      2. Take the returned CDN / public URL.
+      3. Call this endpoint with that URL as file_url.
+    """
     asset = db.query(BrandAsset).filter(BrandAsset.id == asset_id).first()
     if not asset:
         raise HTTPException(status_code=404, detail="Brand asset not found")
-    
+
     asset.file_url = payload.file_url
     db.commit()
     db.refresh(asset)
-    return success(asset.to_dict(), "Brand asset updated successfully")
+    return success(asset.to_dict(), f"Brand asset '{asset.name}' replaced successfully")

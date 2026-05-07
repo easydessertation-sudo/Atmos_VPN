@@ -26,6 +26,13 @@ class AdminUpdateTicketRequest(BaseModel):
     agent_name: Optional[str] = None
     admin_note: Optional[str] = None   # future: store admin reply/notes
 
+class AdminCreateTicketRequest(BaseModel):
+    email:    str
+    subject:  str
+    message:  str
+    category: Optional[str] = "general" # billing | technical | general | abuse
+    priority: Optional[str] = "normal"  # normal | high | urgent
+
 @router.get("/tickets/overview")
 def get_tickets_overview(
     _: None = Depends(admin_required),
@@ -159,6 +166,37 @@ def admin_ticket_detail(
             }
 
     return success(d)
+
+
+@router.post("/tickets")
+def admin_create_ticket(
+    body: AdminCreateTicketRequest,
+    _:    None    = Depends(admin_required),
+    db:   Session = Depends(get_db),
+):
+    """
+    Create a new support ticket on behalf of a user.
+    """
+    # Try to link to an existing user by email
+    user = db.query(User).filter(User.email.ilike(body.email)).first()
+    
+    new_ticket = SupportTicket(
+        user_id=user.id if user else None,
+        email=body.email,
+        subject=body.subject,
+        message=body.message,
+        category=body.category,
+        priority=body.priority,
+        status="open",
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow()
+    )
+    
+    db.add(new_ticket)
+    db.commit()
+    db.refresh(new_ticket)
+    
+    return success(new_ticket.to_dict(), "Ticket created successfully")
 
 
 @router.patch("/tickets/{ticket_id}")

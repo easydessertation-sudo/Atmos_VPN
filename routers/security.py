@@ -1,5 +1,8 @@
+import csv
+import io
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import List
@@ -141,3 +144,51 @@ def update_settings(
     db.commit()
     db.refresh(setting)
     return success(setting.to_dict())
+
+
+@router.get("/export")
+def export_security_events(
+    days: int = 30,
+    _: None = Depends(admin_required),
+    db: Session = Depends(get_db)
+):
+    """
+    Export Security Events (last N days) as a CSV file.
+    """
+    since = datetime.utcnow() - timedelta(days=days)
+    events = db.query(SecurityEvent).filter(SecurityEvent.created_at >= since).order_by(SecurityEvent.created_at.desc()).all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    # CSV Header
+    writer.writerow([
+        "ID", 
+        "Date", 
+        "Time", 
+        "Event Type", 
+        "IP Address", 
+        "User Email", 
+        "Country", 
+        "Action Taken"
+    ])
+
+    # CSV Rows
+    for e in events:
+        date_str = e.created_at.strftime("%Y-%m-%d") if e.created_at else ""
+        time_str = e.created_at.strftime("%I:%M %p") if e.created_at else ""
+        writer.writerow([
+            e.id,
+            date_str,
+            time_str,
+            e.event_type,
+            e.ip_address,
+            e.user_email,
+            e.country,
+            e.action
+        ])
+
+    output.seek(0)
+    response = StreamingResponse(iter([output.getvalue()]), media_type="text/csv")
+    response.headers["Content-Disposition"] = f"attachment; filename=security_events_{days}days.csv"
+    return response

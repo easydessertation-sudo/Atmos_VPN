@@ -543,6 +543,71 @@ class Device(Base):
 
 
 # ─────────────────────────────────────────────────────────────────
+# TABLE 7.5: plans
+# Subscription plans and feature toggles
+# ─────────────────────────────────────────────────────────────────
+class Plan(Base):
+    __tablename__ = "plans"
+
+    key = Column(String(50), primary_key=True) # free, starter, pro, premium
+    label = Column(String(100), nullable=False)
+    description = Column(String(255))
+    amount_usd = Column(Float, default=0.0)
+    per = Column(String(20), default="mo") # mo, year, seat
+    currency = Column(String(10), default="USD")
+
+    stripe_price_id_monthly = Column(String(100))
+    stripe_price_id_yearly = Column(String(100))
+
+    max_devices = Column(Integer, default=1)
+    bandwidth_gb = Column(Integer, nullable=True) # null = unlimited
+    server_count = Column(Integer, nullable=True)
+    simultaneous = Column(Integer, default=1)
+
+    has_streaming = Column(Boolean, default=False)
+    has_p2p = Column(Boolean, default=False)
+    has_dedicated_ip = Column(Boolean, default=False)
+    has_ad_blocker = Column(Boolean, default=False)
+    has_kill_switch = Column(Boolean, default=False)
+    has_priority_support = Column(Boolean, default=False)
+
+    is_visible = Column(Boolean, default=True)
+    is_default = Column(Boolean, default=False)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self):
+        amount_label = "Free" if self.amount_usd == 0 else f"${self.amount_usd}/{self.per}"
+        limits = {
+            "devices": self.max_devices,
+            "bandwidth_gb": self.bandwidth_gb,
+            "servers": self.server_count,
+            "simultaneous": self.simultaneous,
+        }
+        features = {
+            "streaming": self.has_streaming,
+            "p2p": self.has_p2p,
+            "dedicated_ip": self.has_dedicated_ip,
+            "ad_blocker": self.has_ad_blocker,
+            "kill_switch": self.has_kill_switch,
+            "priority_support": self.has_priority_support,
+        }
+        return {
+            "key": self.key,
+            "label": self.label,
+            "description": self.description,
+            "amount_usd": self.amount_usd,
+            "per": self.per,
+            "amount_label": amount_label,
+            "limits": limits,
+            "features": features,
+            "is_visible": self.is_visible,
+            "is_default": self.is_default,
+        }
+
+
+# ─────────────────────────────────────────────────────────────────
 # TABLE 8: subscriptions
 # Full billing history — every plan change, renewal, cancellation
 # ─────────────────────────────────────────────────────────────────
@@ -1057,37 +1122,54 @@ class EmailCampaign(Base):
 class BlogPost(Base):
     __tablename__ = "blog_posts"
 
-    id         = Column(GUID, primary_key=True, default=new_uuid)
-    title      = Column(String(255), nullable=False)
-    author     = Column(String(100), nullable=False)
-    category   = Column(String(100), nullable=False)
-    content    = Column(Text, nullable=True)
-    status     = Column(String(50), default="draft") # "published" | "draft" | "archived"
-    
-    views      = Column(Integer, default=0)
-    
+    id              = Column(GUID, primary_key=True, default=new_uuid)
+    title           = Column(String(255), nullable=False)
+    slug            = Column(String(255), nullable=True, unique=True, index=True)
+    author          = Column(String(100), nullable=False)
+    category        = Column(String(100), nullable=False)
+    content         = Column(Text, nullable=True)
+    excerpt         = Column(Text, nullable=True)
+    tags            = Column(String(500), nullable=True)          # comma-separated
+    featured_image  = Column(String(1000), nullable=True)
+    read_time_min   = Column(Integer, default=3)
+    status          = Column(String(50), default="draft")         # published | draft | archived
+    views           = Column(Integer, default=0)
+
+    # Per-post SEO fields
+    meta_title       = Column(String(255), nullable=True)
+    meta_description = Column(Text, nullable=True)
+    og_image         = Column(String(1000), nullable=True)
+    canonical_url    = Column(String(1000), nullable=True)
+    robots           = Column(String(100), default="index, follow")
+
     published_at = Column(DateTime, nullable=True)
     created_at   = Column(DateTime, default=datetime.utcnow)
+    updated_at   = Column(DateTime, nullable=True)
 
     def to_dict(self):
-        views_label = "-"
-        if self.views > 0:
-            if self.views >= 1000000:
-                views_label = f"{self.views / 1000000:.2f}M"
-            else:
-                views_label = f"{self.views:,}"
-
         date_to_show = self.published_at if self.published_at else self.created_at
-        
         return {
-            "id":       str(self.id),
-            "title":    self.title,
-            "author":   self.author,
-            "category": self.category,
-            "status":   self.status,
-            "views":    views_label,
-            "date":     date_to_show.strftime("%Y-%m-%d"),
-            "created_at": self.created_at.isoformat()
+            "id":               str(self.id),
+            "title":            self.title,
+            "slug":             self.slug,
+            "author":           self.author,
+            "category":         self.category,
+            "content":          self.content,
+            "excerpt":          self.excerpt,
+            "tags":             self.tags.split(",") if self.tags else [],
+            "featured_image":   self.featured_image,
+            "read_time_min":    self.read_time_min,
+            "status":           self.status,
+            "views":            self.views,
+            "meta_title":       self.meta_title,
+            "meta_description": self.meta_description,
+            "og_image":         self.og_image,
+            "canonical_url":    self.canonical_url,
+            "robots":           self.robots,
+            "published_at":     self.published_at.isoformat() if self.published_at else None,
+            "created_at":       self.created_at.isoformat() if self.created_at else None,
+            "updated_at":       self.updated_at.isoformat() if self.updated_at else None,
+            "date":             date_to_show.strftime("%Y-%m-%d") if date_to_show else None,
         }
 
 
@@ -1262,3 +1344,255 @@ class AuditLog(Base):
             "display_time": self.timestamp.strftime("%b %d %H:%M")
         }
 
+
+
+# ─────────────────────────────────────────────────────────────────
+# TABLE 28: integration_keys
+# Settings -> API Keys (Stripe, SendGrid, Sentry, etc.)
+# ─────────────────────────────────────────────────────────────────
+class IntegrationKey(Base):
+    __tablename__ = "integration_keys"
+
+    id          = Column(GUID, primary_key=True, default=new_uuid)
+    service     = Column(String(100), nullable=False, unique=True)
+    api_key     = Column(String(500), nullable=False)
+    is_active   = Column(Boolean, default=True)
+    last_rotated = Column(DateTime, default=datetime.utcnow)
+    created_at  = Column(DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        masked_key = self.api_key
+        if len(masked_key) > 8:
+            masked_key = masked_key[:4] + "••••••••••••••••" + masked_key[-4:]
+        else:
+            masked_key = "••••••••"
+
+        return {
+            "id":           str(self.id),
+            "service":      self.service,
+            "api_key_masked": masked_key,
+            "is_active":    self.is_active,
+            "last_rotated": self.last_rotated.isoformat(),
+            "created_at":   self.created_at.isoformat(),
+        }
+
+
+# ─────────────────────────────────────────────────────────────────
+# TABLE 29: admin_notification_configs
+# Settings -> Notifications (Alert settings)
+# ─────────────────────────────────────────────────────────────────
+class AdminNotificationConfig(Base):
+    __tablename__ = "admin_notification_configs"
+
+    id          = Column(GUID, primary_key=True, default=new_uuid)
+    event_type  = Column(String(100), nullable=False, unique=True)
+    label       = Column(String(200), nullable=False)
+    is_enabled  = Column(Boolean, default=True)
+    updated_at  = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            "id":         str(self.id),
+            "event_type": self.event_type,
+            "label":      self.label,
+            "is_enabled": self.is_enabled,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+# ─────────────────────────────────────────────────────────────────
+# TABLE 30: legal_pages
+# Settings -> Legal
+# ─────────────────────────────────────────────────────────────────
+class LegalPage(Base):
+    __tablename__ = "legal_pages"
+
+    id          = Column(GUID, primary_key=True, default=new_uuid)
+    title       = Column(String(200), nullable=False, unique=True)
+    slug        = Column(String(200), nullable=False, unique=True)
+    content     = Column(Text, nullable=False)
+    last_updated = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self, include_content=False):
+        d = {
+            "id":           str(self.id),
+            "title":        self.title,
+            "slug":         self.slug,
+            "last_updated": self.last_updated.isoformat() if self.last_updated else None,
+        }
+        if include_content:
+            d["content"] = self.content
+        return d
+
+# ─────────────────────────────────────────────────────────────────
+# TABLE 32: seo_settings
+# Global SEO configuration — single row, key="global"
+# ─────────────────────────────────────────────────────────────────
+class SeoSetting(Base):
+    __tablename__ = "seo_settings"
+
+    key                  = Column(String(50), primary_key=True)   # always "global"
+    meta_title           = Column(String(255), default="SecureVPN — Fast & Private VPN")
+    meta_description     = Column(Text, default="Stay private and secure online with SecureVPN.")
+    og_image_url         = Column(String(500))
+    canonical_url        = Column(String(500))
+    robots               = Column(String(100), default="index, follow")
+    og_site_name         = Column(String(100), default="SecureVPN")
+    og_type              = Column(String(50), default="website")
+    twitter_card         = Column(String(50), default="summary_large_image")
+    twitter_site         = Column(String(100))
+    google_analytics_id  = Column(String(50))
+    google_search_console = Column(String(255))
+    updated_at           = Column(DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            "key":                  self.key,
+            "meta_title":           self.meta_title,
+            "meta_description":     self.meta_description,
+            "og_image_url":         self.og_image_url,
+            "canonical_url":        self.canonical_url,
+            "robots":               self.robots,
+            "og_site_name":         self.og_site_name,
+            "og_type":              self.og_type,
+            "twitter_card":         self.twitter_card,
+            "twitter_site":         self.twitter_site,
+            "google_analytics_id":  self.google_analytics_id,
+            "google_search_console": self.google_search_console,
+            "updated_at":           self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+# ─────────────────────────────────────────────────────────────────
+# TABLE 33: media_files
+# Media Library — uploaded images, videos, documents
+# ─────────────────────────────────────────────────────────────────
+class MediaFile(Base):
+    __tablename__ = "media_files"
+
+    id          = Column(GUID, primary_key=True, default=new_uuid)
+    name        = Column(String(255), nullable=False)
+    url         = Column(String(1000), nullable=False)
+    file_type   = Column(String(20), nullable=False)  # image | video | document
+    mime_type   = Column(String(100))
+    size_bytes  = Column(Integer, default=0)
+    width       = Column(Integer)
+    height      = Column(Integer)
+    alt_text    = Column(String(500))
+    folder      = Column(String(255), default="/")
+    uploaded_by = Column(String(100))
+    created_at  = Column(DateTime, default=datetime.utcnow, index=True)
+
+    def to_dict(self):
+        size = self.size_bytes or 0
+        if size >= 1_048_576:
+            size_label = f"{size / 1_048_576:.1f} MB"
+        elif size >= 1024:
+            size_label = f"{size / 1024:.0f} KB"
+        else:
+            size_label = f"{size} B"
+        return {
+            "id":          str(self.id),
+            "name":        self.name,
+            "url":         self.url,
+            "file_type":   self.file_type,
+            "mime_type":   self.mime_type,
+            "size_bytes":  self.size_bytes,
+            "size_label":  size_label,
+            "width":       self.width,
+            "height":      self.height,
+            "alt_text":    self.alt_text,
+            "folder":      self.folder,
+            "uploaded_by": self.uploaded_by,
+            "created_at":  self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+# ─────────────────────────────────────────────────────────────────
+# TABLE 34: help_articles
+# Support Center — Help Articles tab
+# ─────────────────────────────────────────────────────────────────
+class HelpArticle(Base):
+    __tablename__ = "help_articles"
+
+    id           = Column(GUID, primary_key=True, default=new_uuid)
+    title        = Column(String(255), nullable=False)
+    slug         = Column(String(255), nullable=False, unique=True, index=True)
+    content      = Column(Text, nullable=False)
+    excerpt      = Column(Text)
+    category     = Column(String(100), default="general")   # getting_started|account|billing|technical|security|general
+    tags         = Column(String(500))                       # comma-separated
+    status       = Column(String(20), default="draft")       # draft | published
+    is_featured  = Column(Boolean, default=False)
+    author_name  = Column(String(100), default="AtmosVPN Team")
+    author_email = Column(String(255))
+    views        = Column(Integer, default=0)
+    helpful_yes  = Column(Integer, default=0)
+    helpful_no   = Column(Integer, default=0)
+    published_at = Column(DateTime)
+    created_at   = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at   = Column(DateTime)
+
+    def to_dict(self, include_content=True):
+        d = {
+            "id":           str(self.id),
+            "title":        self.title,
+            "slug":         self.slug,
+            "excerpt":      self.excerpt,
+            "category":     self.category,
+            "tags":         self.tags.split(",") if self.tags else [],
+            "status":       self.status,
+            "is_featured":  self.is_featured,
+            "author_name":  self.author_name,
+            "author_email": self.author_email,
+            "views":        self.views,
+            "helpful_yes":  self.helpful_yes,
+            "helpful_no":   self.helpful_no,
+            "published_at": self.published_at.isoformat() if self.published_at else None,
+            "created_at":   self.created_at.isoformat() if self.created_at else None,
+            "updated_at":   self.updated_at.isoformat() if self.updated_at else None,
+        }
+        if include_content:
+            d["content"] = self.content
+        return d
+
+
+# ─────────────────────────────────────────────────────────────────
+# TABLE 35: faqs
+# Support Center — FAQ Management tab
+# ─────────────────────────────────────────────────────────────────
+class FAQ(Base):
+    __tablename__ = "faqs"
+
+    id          = Column(GUID, primary_key=True, default=new_uuid)
+    question    = Column(Text, nullable=False)
+    answer      = Column(Text, nullable=False)
+    category    = Column(String(100), default="general")   # general|billing|technical|account|security
+    tags        = Column(String(500))
+    status      = Column(String(20), default="published")  # draft | published
+    sort_order  = Column(Integer, default=0)
+    is_featured = Column(Boolean, default=False)
+    created_by  = Column(String(255))
+    views       = Column(Integer, default=0)
+    helpful_yes = Column(Integer, default=0)
+    helpful_no  = Column(Integer, default=0)
+    created_at  = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at  = Column(DateTime)
+
+    def to_dict(self):
+        return {
+            "id":          str(self.id),
+            "question":    self.question,
+            "answer":      self.answer,
+            "category":    self.category,
+            "tags":        self.tags.split(",") if self.tags else [],
+            "status":      self.status,
+            "sort_order":  self.sort_order,
+            "is_featured": self.is_featured,
+            "created_by":  self.created_by,
+            "views":       self.views,
+            "helpful_yes": self.helpful_yes,
+            "helpful_no":  self.helpful_no,
+            "created_at":  self.created_at.isoformat() if self.created_at else None,
+            "updated_at":  self.updated_at.isoformat() if self.updated_at else None,
+        }
