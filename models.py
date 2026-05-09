@@ -1044,7 +1044,7 @@ class PushCampaign(Base):
     title          = Column(String(255), nullable=False)
     message        = Column(Text, nullable=False)
     target_segment = Column(String(100), default="All Users")
-    status         = Column(String(50), default="draft") # "draft" | "scheduled" | "sent"
+    status         = Column(String(50), default="draft") # "draft" | "scheduled" | "sent" | "cancelled"
     scheduled_for  = Column(DateTime, nullable=True) # null = send immediately
     
     # Analytics
@@ -1595,4 +1595,87 @@ class FAQ(Base):
             "helpful_no":  self.helpful_no,
             "created_at":  self.created_at.isoformat() if self.created_at else None,
             "updated_at":  self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+# ─────────────────────────────────────────────────────────────────
+# TABLE 36: admin_alerts
+# Fired by the alert_service when a watched event occurs.
+# Drives the admin panel notification bell icon.
+#
+# event_type values (must match AdminNotificationConfig.event_type):
+#   server_offline | server_load | urgent_ticket | revenue_report
+#   new_signup | refund_request | failed_payment | security_incident
+#   blog_comment
+# ─────────────────────────────────────────────────────────────────
+class AdminAlert(Base):
+    __tablename__ = "admin_alerts"
+
+    id         = Column(GUID, primary_key=True, default=new_uuid)
+    event_type = Column(String(100), nullable=False, index=True)
+    title      = Column(String(255), nullable=False)
+    message    = Column(Text, nullable=True)
+    meta       = Column(Text, nullable=True)           # JSON string of extra data
+    is_read    = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+    def to_dict(self):
+        return {
+            "id":         str(self.id),
+            "event_type": self.event_type,
+            "title":      self.title,
+            "message":    self.message,
+            "meta":       self.meta,
+            "is_read":    self.is_read,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "time_ago":   self._time_ago(),
+        }
+
+    def _time_ago(self):
+        if not self.created_at:
+            return ""
+        delta = datetime.utcnow() - self.created_at
+        if delta.seconds < 60:
+            return "Just now"
+        if delta.seconds < 3600:
+            return f"{delta.seconds // 60}m ago"
+        if delta.days == 0:
+            return f"{delta.seconds // 3600}h ago"
+        return f"{delta.days}d ago"
+
+
+# ─────────────────────────────────────────────────────────────────
+# TABLE 37: job_applicants
+# Stores actual applicants for each job listing.
+# Created when someone applies via the public site,
+# or when admin manually adds an applicant for testing.
+#
+# status: new | reviewing | interview | offer | rejected
+# ─────────────────────────────────────────────────────────────────
+class JobApplicant(Base):
+    __tablename__ = "job_applicants"
+
+    id         = Column(GUID, primary_key=True, default=new_uuid)
+    job_id     = Column(GUID, ForeignKey("job_listings.id", ondelete="CASCADE"), nullable=False, index=True)
+    name       = Column(String(200), nullable=False)
+    email      = Column(String(255), nullable=False)
+    phone      = Column(String(50), nullable=True)
+    resume_url = Column(Text, nullable=True)      # link to uploaded CV / portfolio
+    cover_note = Column(Text, nullable=True)
+    status     = Column(String(50), default="new")  # new | reviewing | interview | offer | rejected
+    applied_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            "id":         str(self.id),
+            "job_id":     str(self.job_id),
+            "name":       self.name,
+            "email":      self.email,
+            "phone":      self.phone,
+            "resume_url": self.resume_url,
+            "cover_note": self.cover_note,
+            "status":     self.status,
+            "applied_at": self.applied_at.isoformat() if self.applied_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

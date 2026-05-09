@@ -23,7 +23,7 @@ from slowapi.errors import RateLimitExceeded
 from models import Base, engine
 
 # ─── Routers ───────────────────────────────────────────────────────────────
-from routers import auth, users, servers, sessions, tickets, settings, analytics, subscriptions, revenue, promotions, system_status, security, notifications, emails, blog, careers, press, downloads, admin_team, audit, support_content
+from routers import auth, users, servers, sessions, tickets, settings, analytics, subscriptions, revenue, promotions, system_status, security, notifications, emails, blog, careers, press, downloads, admin_team, audit, support_content, alerts
 
 # ─────────────────────────────────────────────────────────────────
 # App Setup
@@ -77,6 +77,7 @@ app.include_router(downloads.router,     prefix="/api/admin/downloads", tags=["D
 app.include_router(admin_team.router,    prefix="/api/admin/team", tags=["Admin Team"])
 app.include_router(audit.router,           prefix="/api/admin/audit",    tags=["Audit Log"])
 app.include_router(support_content.router, prefix="/api/admin/support", tags=["Support Content"])
+app.include_router(alerts.router,          prefix="/api/admin",         tags=["Admin Alerts"])
 
 
 # ─── Startup ───────────────────────────────────────────────────────────────

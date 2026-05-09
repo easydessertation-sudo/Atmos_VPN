@@ -6,6 +6,7 @@ from typing import Optional
 
 from deps import admin_required, get_db, success
 from models import ServiceHealth, SystemIncident
+from alert_service import fire_alert
 
 router = APIRouter()
 
@@ -91,6 +92,16 @@ def create_incident(
     db.add(incident)
     db.commit()
     db.refresh(incident)
+
+    # ── Fire security_incident alert ────────────────────────────────
+    fire_alert(
+        event_type = "security_incident",
+        title      = f"🔴 Security Incident: {payload.title}",
+        message    = f"Severity: {payload.severity} | Affected: {payload.affected_services}",
+        db         = db,
+        meta       = {"incident_id": str(incident.id), "severity": payload.severity},
+    )
+
     return success(incident.to_dict())
 
 @router.patch("/incidents/{incident_id}")
@@ -128,9 +139,21 @@ def update_service_status(
     service = db.query(ServiceHealth).filter(ServiceHealth.id == service_id).first()
     if not service:
         raise HTTPException(status_code=404, detail="Service not found")
-    
+
+    old_status = service.status
     service.status = payload.status
     service.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(service)
+
+    # ── Fire server_offline alert when a service goes offline ───────
+    if payload.status == "offline" and old_status != "offline":
+        fire_alert(
+            event_type = "server_offline",
+            title      = f"⚠️ Service Offline: {service.service_name}",
+            message    = f"{service.service_name} was marked offline by an admin.",
+            db         = db,
+            meta       = {"service_id": service_id, "service_name": service.service_name},
+        )
+
     return success(service.to_dict())

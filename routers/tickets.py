@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from deps import admin_required, get_db, success
 from models import SupportTicket, User
+from alert_service import fire_alert
 
 router = APIRouter()
 
@@ -195,7 +196,17 @@ def admin_create_ticket(
     db.add(new_ticket)
     db.commit()
     db.refresh(new_ticket)
-    
+
+    # ── Fire alert if this is an urgent ticket ──────────────────────
+    if (body.priority or "").lower() == "urgent":
+        fire_alert(
+            event_type = "urgent_ticket",
+            title      = "🚨 New Urgent Support Ticket",
+            message    = f"Subject: '{body.subject}' from {body.email}",
+            db         = db,
+            meta       = {"ticket_id": str(new_ticket.id), "email": body.email},
+        )
+
     return success(new_ticket.to_dict(), "Ticket created successfully")
 
 
