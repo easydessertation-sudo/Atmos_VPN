@@ -32,7 +32,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from jose import JWTError, jwt
@@ -50,6 +50,7 @@ from wireguard import (
     generate_wg_config, get_existing_config, revoke_all_user_configs
 )
 from tasks import add_wireguard_peer, remove_wireguard_peer
+from admin_alert_service import fire_admin_alert
 
 from stripe_client import (
     create_checkout_session,
@@ -552,6 +553,15 @@ def register(request: Request, body: RegisterRequest, db: Session = Depends(get_
     db.commit()
     db.refresh(user)
 
+    # ── Fire admin alert: new user signed up ───────────────────────────────
+    fire_admin_alert(
+        event_type = "new_signup",
+        title      = "👤 New User Registered",
+        message    = f"{email} just signed up on AtmosVPN.",
+        db         = db,
+        meta       = {"user_id": str(user.id), "email": email},
+    )
+
     return success(
         {
             "user":          user.to_dict(),
@@ -975,6 +985,116 @@ def google_verify_token(
         msg="Google sign-in successful",
     )
 
+
+
+# ─────────────────────────────────────────────────────────────────
+# Apple OAuth Routes
+# ─────────────────────────────────────────────────────────────────
+class AppleTokenBody(BaseModel):
+    id_token: str                           # identityToken from Apple Sign-In SDK
+    email: str = ""                         # Apple only sends this on first login
+    full_name: str = ""                     # Apple only sends this on first login
+
+def _upsert_apple_user(apple_user: dict, db: Session, request: Request):
+    """
+    Given verified Apple user info dict, find or create the local User row.
+    Returns user.
+    """
+    apple_id = apple_user["sub"]
+    email    = apple_user.get("email", "").strip().lower()
+    name     = apple_user.get("name", "")
+
+    user = db.query(User).filter_by(apple_id=apple_id).first()
+
+    if not user:
+        if email:
+            user = db.query(User).filter_by(email=email).first()
+            
+        if user:
+            user.apple_id      = apple_id
+            user.auth_provider = "apple"
+        else:
+            user = User(
+                email         = email or f"{apple_id}@privaterelay.appleid.com",
+                full_name     = name or "Apple User",
+                password_hash = bcrypt.hash(secrets.token_hex(32)),
+                apple_id      = apple_id,
+                auth_provider = "apple",
+                email_verified = True,
+                plan          = "free",
+            )
+            db.add(user)
+
+    user.last_login = datetime.utcnow()
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@app.post("/api/auth/apple/verify", tags=["Auth"])
+def apple_verify_token(
+    body:    AppleTokenBody,
+    request: Request,
+    db:      Session = Depends(get_db)
+):
+    """
+    Verify an Apple identityToken (JWT) from the iOS Sign-In with Apple SDK.
+    Because Apple only sends the email and name once (on the first login), 
+    the frontend must pass them in the body if they are available.
+    """
+    import requests
+    APPLE_CLIENT_ID = os.environ.get("APPLE_CLIENT_ID", "")
+    
+    if not APPLE_CLIENT_ID:
+        raise HTTPException(status_code=503, detail="Apple OAuth not configured. Set APPLE_CLIENT_ID in .env")
+
+    try:
+        # 1. Extract 'kid' from the unverified JWT header
+        unverified_header = jwt.get_unverified_header(body.id_token)
+        kid = unverified_header.get("kid")
+        if not kid:
+            raise ValueError("Missing 'kid' in token header")
+
+        # 2. Fetch Apple's public keys
+        resp = requests.get("https://appleid.apple.com/auth/keys")
+        keys = resp.json().get("keys", [])
+        
+        # 3. Find the matching public key
+        public_key = next((k for k in keys if k["kid"] == kid), None)
+        if not public_key:
+            raise ValueError("Apple public key not found for this token")
+
+        # 4. Verify the token signature and claims
+        payload = jwt.decode(
+            body.id_token,
+            public_key,
+            algorithms=["RS256"],
+            audience=APPLE_CLIENT_ID,
+            issuer="https://appleid.apple.com"
+        )
+    except Exception as e:
+        logger.error(f"Apple token verification failed: {str(e)}")
+        raise HTTPException(status_code=401, detail=f"Invalid Apple token: {str(e)}")
+
+    # Construct the user payload
+    apple_user = {
+        "sub": payload["sub"],
+        "email": body.email or payload.get("email", ""),
+        "name": body.full_name
+    }
+
+    user = _upsert_apple_user(apple_user, db, request)
+
+    return success(
+        {
+            "user":          user.to_dict(),
+            "access_token":  create_access_token(user.id),
+            "refresh_token": create_refresh_token(user.id),
+            "is_new_user":   user.created_at == user.last_login,
+            "plan_limits":   PLAN_LIMITS.get(user.plan, PLAN_LIMITS["free"]),
+        },
+        msg="Apple sign-in successful",
+    )
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -1731,7 +1851,7 @@ def get_plans(db: Session = Depends(get_db)):
                 "currency":         p.currency,
                 # Limits
                 "bandwidth_gb":     p.bandwidth_gb,
-                "speed_mbps":       None,            # controlled by PLAN_LIMITS internally
+                "speed_mbps":       PLAN_LIMITS.get(p.key, {}).get("speed_mbps"),
                 "devices":          p.max_devices,
                 "simultaneous":     p.simultaneous,
                 "server_locations": p.server_count,
@@ -1767,7 +1887,7 @@ def get_billing_status(user: User = Depends(get_current_user), db: Session = Dep
     response = {
         "plan": user.plan,
         "subscription_status": user.subscription_status,
-        "plan_expires_at": user.plan_expires_at,
+        "plan_expires_at": user.plan_expires_at.isoformat() + "Z" if user.plan_expires_at else None,
         "next_charge": None
     }
 
@@ -2775,6 +2895,187 @@ def admin_update_settings(
     _app_config.update(updates)
     return success(_app_config, "Settings updated")
 
+
+# ─────────────────────────────────────────────────────────────────
+# WebView Payment Redirects
+# These routes are hit by the mobile app's in-app browser after Stripe.
+# ─────────────────────────────────────────────────────────────────
+@app.get("/payment/success", tags=["Billing"], response_class=HTMLResponse)
+def payment_success_page(session_id: str = ""):
+    """Shows a success screen inside the mobile app's mini-browser after payment."""
+    return f"""
+    <html>
+        <head>
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <style>
+                body {{
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                    background-color: #0f172a;
+                    color: white;
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: center;
+                    align-items: center;
+                    height: 100vh;
+                    margin: 0;
+                    text-align: center;
+                    padding: 20px;
+                }}
+                .icon {{ font-size: 64px; margin-bottom: 20px; }}
+                h1 {{ margin: 0 0 10px 0; font-size: 24px; }}
+                p {{ color: #94a3b8; font-size: 16px; line-height: 1.5; }}
+            </style>
+        </head>
+        <body>
+            <div class="icon">✅</div>
+            <h1>Payment Successful!</h1>
+            <p>Your subscription is now active.</p>
+            <p>You can close this window to return to the app.</p>
+        </body>
+    </html>
+    """
+
+@app.get("/payment/cancel", tags=["Billing"], response_class=HTMLResponse)
+def payment_cancel_page():
+    """Shows a cancellation screen inside the mobile app's mini-browser."""
+    return """
+    <html>
+        <head>
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <style>
+                body {
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                    background-color: #0f172a;
+                    color: white;
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: center;
+                    align-items: center;
+                    height: 100vh;
+                    margin: 0;
+                    text-align: center;
+                    padding: 20px;
+                }
+                .icon { font-size: 64px; margin-bottom: 20px; }
+                h1 { margin: 0 0 10px 0; font-size: 24px; }
+                p { color: #94a3b8; font-size: 16px; line-height: 1.5; }
+            </style>
+        </head>
+        <body>
+            <div class="icon">❌</div>
+            <h1>Payment Cancelled</h1>
+            <p>Your transaction was not completed.</p>
+            <p>You can close this window to return to the app.</p>
+        </body>
+    </html>
+    """
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    from fastapi import Response
+    return Response(status_code=204)
+
+@app.get("/reset-password", response_class=HTMLResponse, tags=["Auth"])
+def reset_password_page(token: str):
+    """
+    Serve a beautiful HTML page that allows users to reset their password.
+    It takes the token from the URL and calls the POST /api/auth/reset-password endpoint.
+    """
+    html = f"""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Reset Password - AtmosVPN</title>
+        <style>
+            body {{
+                margin: 0; padding: 0;
+                background-color: #0f172a;
+                color: white; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                display: flex; justify-content: center; align-items: center; min-height: 100vh;
+            }}
+            .container {{
+                background: #1e293b; padding: 40px; border-radius: 12px;
+                box-shadow: 0 10px 25px rgba(0,0,0,0.5); width: 100%; max-width: 400px;
+                text-align: center;
+            }}
+            h2 {{ color: #3b82f6; margin-top: 0; }}
+            input {{
+                width: 100%; padding: 12px; margin: 10px 0 20px;
+                border-radius: 6px; border: 1px solid #334155;
+                background: #0f172a; color: white; box-sizing: border-box;
+            }}
+            button {{
+                width: 100%; padding: 12px; background: #2563eb; color: white;
+                border: none; border-radius: 6px; font-weight: bold; cursor: pointer;
+                transition: background 0.3s;
+            }}
+            button:hover {{ background: #1d4ed8; }}
+            .message {{ margin-top: 15px; font-size: 14px; display: none; }}
+            .success {{ color: #10b981; }}
+            .error {{ color: #ef4444; }}
+        </style>
+    </head>
+    <body>
+        <div class="container" id="formContainer">
+            <h2>Reset Your Password</h2>
+            <p style="color: #94a3b8; font-size: 14px; margin-bottom: 25px;">Enter your new password below.</p>
+            
+            <form id="resetForm">
+                <input type="password" id="newPassword" placeholder="New Password" required minlength="6">
+                <button type="submit" id="submitBtn">Update Password</button>
+            </form>
+            
+            <div id="message" class="message"></div>
+        </div>
+
+        <script>
+            document.getElementById('resetForm').addEventListener('submit', async (e) => {{
+                e.preventDefault();
+                const btn = document.getElementById('submitBtn');
+                const msg = document.getElementById('message');
+                const newPassword = document.getElementById('newPassword').value;
+                const token = "{token}";
+                
+                btn.disabled = true;
+                btn.innerText = 'Updating...';
+                msg.style.display = 'none';
+
+                try {{
+                    const response = await fetch('/api/auth/reset-password', {{
+                        method: 'POST',
+                        headers: {{ 'Content-Type': 'application/json' }},
+                        body: JSON.stringify({{ token: token, new_password: newPassword }})
+                    }});
+                    
+                    const data = await response.json();
+                    
+                    msg.style.display = 'block';
+                    if (response.ok && data.success) {{
+                        msg.className = 'message success';
+                        msg.innerText = 'Password reset successfully! You can now log in on the app.';
+                        document.getElementById('resetForm').style.display = 'none';
+                    }} else {{
+                        msg.className = 'message error';
+                        msg.innerText = data.detail || data.message || 'Failed to reset password. Link may be expired.';
+                        btn.disabled = false;
+                        btn.innerText = 'Update Password';
+                    }}
+                }} catch (err) {{
+                    msg.style.display = 'block';
+                    msg.className = 'message error';
+                    msg.innerText = 'Network error occurred. Please try again.';
+                    btn.disabled = false;
+                    btn.innerText = 'Update Password';
+                }}
+            }});
+        </script>
+    </body>
+    </html>
+    """
+    return HTMLResponse(content=html)
 
 # ─────────────────────────────────────────────────────────────────
 # Entry Point

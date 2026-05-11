@@ -9,13 +9,15 @@ load_dotenv()
 # App URLs
 APP_BASE_URL = os.environ.get("APP_BASE_URL", "http://localhost:5000")
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
-SUPPORT_EMAIL = os.environ.get("SUPPORT_EMAIL", "support@atmosvpn.com")
 
 # SMTP Configuration
 SMTP_SERVER = os.environ.get("SMTP_SERVER", "")
 SMTP_PORT = int(os.environ.get("SMTP_PORT", 587))
 SMTP_USERNAME = os.environ.get("SMTP_USERNAME", "")
 SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
+
+# Gmail prevents sending from a different address than the login account.
+SUPPORT_EMAIL = os.environ.get("SUPPORT_EMAIL", SMTP_USERNAME or "atmosvpn00@gmail.com")
 
 
 def send_password_reset_email(to_email: str, token: str) -> bool:

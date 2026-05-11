@@ -1,4 +1,4 @@
-﻿# AtmosVPN — Complete API Documentation
+# AtmosVPN — Complete API Documentation
 **Version:** 2.0  
 **Base URL:** `http://127.0.0.1:5000` (Development)  
 **Production URL:** To be updated when domain is configured  
@@ -169,6 +169,26 @@ User-Agent: AtmosVPN/1.0 (iPhone; iOS 17.0)
   }
 }
 ```
+
+---
+
+## 1.4b — POST /api/auth/apple/verify
+**Full URL:** `http://127.0.0.1:5000/api/auth/apple/verify`  
+**Auth:** ❌ Not required  
+**Description:** Verify an Apple `identityToken` obtained from the "Sign in with Apple" iOS/macOS SDK.
+
+**Important Note:** Apple ONLY sends the `email` and `full_name` the **very first time** a user signs in. On subsequent logins, Apple only sends the token. Therefore, your frontend MUST pass the `email` and `full_name` if Apple provides them. The backend will store them.
+
+**Request Body:**
+```json
+{
+  "id_token": "eyJhbGciOiJSUzI1NiIsImtpZCI6...", 
+  "email": "user@privaterelay.appleid.com", 
+  "full_name": "John Doe"
+}
+```
+
+**Response (200):** Same as `POST /api/auth/login` (returns user data and access tokens).
 
 ---
 

@@ -37,6 +37,12 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
+# Import the admin alert service (fires alerts to admin panel bell icon)
+try:
+    from admin_alert_service import fire_admin_alert as _fire_admin_alert
+except ImportError:
+    def _fire_admin_alert(*args, **kwargs): pass  # Graceful fallback
+
 # ─────────────────────────────────────────────────────────────────
 # Stripe Configuration
 # ─────────────────────────────────────────────────────────────────
@@ -46,8 +52,8 @@ STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
 # App URLs — where Stripe redirects after payment
 # Replace with your real app URLs when deploying
 APP_BASE_URL       = os.environ.get("APP_BASE_URL", "http://localhost:5000")
-STRIPE_SUCCESS_URL = f"{APP_BASE_URL}/payment/success?session_id={{CHECKOUT_SESSION_ID}}"
-STRIPE_CANCEL_URL  = f"{APP_BASE_URL}/payment/cancel"
+STRIPE_SUCCESS_URL = "atmosvpn://app/payment-success"
+STRIPE_CANCEL_URL  = "atmosvpn://app/payment-cancel"
 STRIPE_PORTAL_URL  = f"{APP_BASE_URL}/account"
 
 # ─────────────────────────────────────────────────────────────────
@@ -220,7 +226,7 @@ def get_next_charge_details(stripe_customer_id: str) -> dict:
         return None
         
     try:
-        upcoming = stripe.Invoice.upcoming(customer=stripe_customer_id)
+        upcoming = stripe.Invoice.create_preview(customer=stripe_customer_id)
         # Convert Unix Timestamp to a readable ISO Datetime string
         from datetime import datetime
         readable_date = datetime.utcfromtimestamp(upcoming.next_payment_attempt).isoformat() + "Z"
@@ -357,7 +363,12 @@ def handle_webhook_event(event: stripe.Event, db) -> dict:
 # Internal Event Handlers
 # ─────────────────────────────────────────────────────────────────
 
-def _handle_checkout_completed(session_data: dict, db) -> dict:
+def safe_get(obj, key, default=None):
+    if hasattr(obj, "get") and callable(getattr(obj, "get")):
+        return obj.get(key, default)
+    return getattr(obj, key, default)
+
+def _handle_checkout_completed(session_data, db) -> dict:
     """
     checkout.session.completed → User just paid for the first time.
     1. Get user_id and plan from metadata
@@ -367,12 +378,12 @@ def _handle_checkout_completed(session_data: dict, db) -> dict:
     """
     from models import User, Subscription
 
-    metadata      = session_data.get("metadata", {})
-    user_id       = metadata.get("user_id")
-    plan          = metadata.get("plan", "essential")
-    billing_cycle = metadata.get("billing_cycle", "monthly")
-    customer_id   = session_data.get("customer")
-    subscription_id = session_data.get("subscription")
+    metadata      = safe_get(session_data, "metadata") or {}
+    user_id       = safe_get(metadata, "user_id")
+    plan          = safe_get(metadata, "plan", "essential")
+    billing_cycle = safe_get(metadata, "billing_cycle", "monthly")
+    customer_id   = safe_get(session_data, "customer")
+    subscription_id = safe_get(session_data, "subscription")
 
     if not user_id:
         logger.error("checkout.session.completed: no user_id in metadata!")
@@ -385,13 +396,9 @@ def _handle_checkout_completed(session_data: dict, db) -> dict:
 
     days = BILLING_CYCLE_DAYS.get(billing_cycle, 30)
 
-    # Calculate price based on plan
-    plan_prices = {
-        "essential": {"monthly": 3.99,  "annual": 35.88},
-        "elite":     {"monthly": 6.99,  "annual": 59.88},
-        "ultimate":  {"monthly": 11.99, "annual": 91.80},
-    }
-    amount_usd = plan_prices.get(plan, {}).get(billing_cycle, 0.0)
+    # Read exact amount charged from Stripe (amount_total is in cents)
+    amount_total = safe_get(session_data, "amount_total", 0)
+    amount_usd = amount_total / 100.0
 
     # Update user record
     user.plan                  = plan
@@ -408,7 +415,6 @@ def _handle_checkout_completed(session_data: dict, db) -> dict:
         amount_usd=amount_usd,
         currency="USD",
         stripe_subscription_id=subscription_id,
-        stripe_customer_id=customer_id,
         status="active",
         started_at=datetime.utcnow(),
         expires_at=datetime.utcnow() + timedelta(days=days),
@@ -427,8 +433,8 @@ def _handle_payment_succeeded(invoice_data: dict, db) -> dict:
     """
     from models import User, Subscription
 
-    customer_id     = invoice_data.get("customer")
-    subscription_id = invoice_data.get("subscription")
+    customer_id     = safe_get(invoice_data, "customer")
+    subscription_id = safe_get(invoice_data, "subscription")
 
     if not customer_id:
         return {"handled": False, "action": "no customer_id"}
@@ -466,8 +472,7 @@ def _handle_payment_failed(invoice_data: dict, db) -> dict:
     We just log it for now. Email notification goes in Step 5.
     """
     from models import User
-
-    customer_id = invoice_data.get("customer")
+    customer_id = safe_get(invoice_data, "customer")
     user = db.query(User).filter_by(stripe_customer_id=customer_id).first()
 
     if user:
@@ -475,7 +480,14 @@ def _handle_payment_failed(invoice_data: dict, db) -> dict:
             f"Payment failed for user {user.id} (customer {customer_id}). "
             f"Stripe will retry. User keeps access during grace period."
         )
-        # TODO Step 5: Send "payment failed" email to user
+        # ── Fire admin alert: payment failed ──────────────────────────────
+        _fire_admin_alert(
+            event_type = "failed_payment",
+            title      = "💳 Payment Failed",
+            message    = f"Payment failed for {user.email}. Stripe will retry for 7 days.",
+            db         = db,
+            meta       = {"user_id": str(user.id), "email": user.email, "stripe_customer": customer_id},
+        )
         return {"handled": True, "action": "payment_failed_logged", "user_id": str(user.id)}
 
     return {"handled": False, "action": "user not found"}
@@ -487,9 +499,11 @@ def _handle_subscription_deleted(subscription_data: dict, db, revoke_fn) -> dict
     1. Downgrade user to free plan immediately
     2. Revoke ALL WireGuard configs (kicks them off VPN)
     """
-    from models import User
+    from models import User, Subscription
+    from datetime import datetime
 
-    customer_id = subscription_data.get("customer")
+    customer_id = safe_get(subscription_data, "customer")
+    sub_id      = safe_get(subscription_data, "id")
     user = db.query(User).filter_by(stripe_customer_id=customer_id).first()
 
     if not user:
@@ -503,9 +517,24 @@ def _handle_subscription_deleted(subscription_data: dict, db, revoke_fn) -> dict
     user.subscription_status = "inactive"
     user.plan_expires_at     = None
 
+    # Update Subscription history table
+    sub_record = db.query(Subscription).filter_by(stripe_subscription_id=sub_id).first()
+    if sub_record:
+        sub_record.status = "cancelled"
+        sub_record.cancelled_at = datetime.utcnow()
+
     # Revoke all WireGuard peer configs
     revoked = revoke_fn(db, str(user.id))
     db.commit()
+
+    # ── Fire admin alert: refund / subscription cancelled ───────────────
+    _fire_admin_alert(
+        event_type = "refund_request",
+        title      = "🔄 Subscription Cancelled",
+        message    = f"{user.email} cancelled their {old_plan} subscription. {revoked} config(s) revoked.",
+        db         = db,
+        meta       = {"user_id": str(user.id), "email": user.email, "old_plan": old_plan, "configs_revoked": revoked},
+    )
 
     logger.info(
         f"Subscription cancelled for user {user.id} — "
@@ -525,18 +554,42 @@ def _handle_subscription_updated(subscription_data: dict, db) -> dict:
     customer.subscription.updated → User changed plan via billing portal.
     Updates the plan in our DB to match what Stripe has.
     """
-    from models import User
+    from models import User, Subscription
+    from datetime import datetime
 
-    customer_id = subscription_data.get("customer")
-    metadata    = subscription_data.get("metadata", {})
-    new_plan    = metadata.get("plan")
+    customer_id = safe_get(subscription_data, "customer")
+    sub_id      = safe_get(subscription_data, "id")
+    metadata    = safe_get(subscription_data, "metadata") or {}
+    new_plan    = safe_get(metadata, "plan")
+    cancel_at_period_end = safe_get(subscription_data, "cancel_at_period_end", False)
+    cancel_at            = safe_get(subscription_data, "cancel_at")
+    status               = safe_get(subscription_data, "status", "active")
+    
+    # It's considered cancelled if it's explicitly scheduled to cancel or already cancelled
+    is_cancelled = cancel_at_period_end or (cancel_at is not None) or status in ["canceled", "unpaid", "past_due"]
 
     user = db.query(User).filter_by(stripe_customer_id=customer_id).first()
-    if not user or not new_plan:
-        return {"handled": False, "action": "missing data"}
+    if not user:
+        return {"handled": False, "action": "missing user"}
 
-    user.plan = new_plan
+    sub_record = db.query(Subscription).filter_by(stripe_subscription_id=sub_id).first()
+    logger.info(f"DEBUG _handle_subscription_updated: sub_id={sub_id}, is_cancelled={is_cancelled}, status={status}, sub_record_found={sub_record is not None}")
+
+    if is_cancelled:
+        user.subscription_status = "cancelled"
+        if sub_record:
+            sub_record.status = "cancelled"
+            if not sub_record.cancelled_at:
+                sub_record.cancelled_at = datetime.utcnow()
+    else:
+        user.subscription_status = "active"
+        if new_plan:
+            user.plan = new_plan
+        if sub_record:
+            sub_record.status = "active"
+            sub_record.cancelled_at = None
+            
     db.commit()
 
-    logger.info(f"Subscription updated for user {user.id} → plan: {new_plan}")
-    return {"handled": True, "action": "plan_updated", "user_id": str(user.id)}
+    logger.info(f"Subscription updated for user {user.id} → plan: {user.plan}, status: {user.subscription_status}, sub_record_status: {sub_record.status if sub_record else 'None'}")
+    return {"handled": True, "action": "subscription_updated", "user_id": str(user.id)}

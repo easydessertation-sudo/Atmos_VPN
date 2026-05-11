@@ -105,11 +105,13 @@ if _is_sqlite:
     _engine_kwargs = dict(connect_args=_connect_args)
 
 elif _is_pgbouncer:
-    # Supabase PgBouncer (transaction mode) — let PgBouncer do the pooling.
-    # NullPool: SQLAlchemy never reuses connections; no stale-socket errors.
-    # keepalives force the OS to detect dead TCP sockets within ~15 s.
+    # Supabase PgBouncer (transaction mode)
+    # NullPool opens/closes a connection on every request, which can cause
+    # "timeout expired" errors under rapid requests or rate limits.
+    # Instead, we use a small pool with pre_ping to keep connections alive
+    # but drop them if the server closes them unexpectedly.
     _connect_args = {
-        "connect_timeout": 10,
+        "connect_timeout": 15,
         "keepalives":          1,
         "keepalives_idle":     10,
         "keepalives_interval": 5,
@@ -117,13 +119,17 @@ elif _is_pgbouncer:
     }
     _engine_kwargs = dict(
         connect_args=_connect_args,
-        poolclass=NullPool,        # no SQLAlchemy pool — PgBouncer handles it
+        pool_size=5,
+        max_overflow=10,
+        pool_pre_ping=True,
+        pool_recycle=120,   # Supabase PgBouncer drops idle sockets quickly
+        pool_timeout=30,
     )
 
 else:
-    # Direct Postgres (port 5432) — SQLAlchemy pool is fine here.
+    # Direct Postgres (port 5432)
     _connect_args = {
-        "connect_timeout": 10,
+        "connect_timeout": 15,
         "keepalives":          1,
         "keepalives_idle":     30,
         "keepalives_interval": 5,
@@ -131,10 +137,10 @@ else:
     }
     _engine_kwargs = dict(
         connect_args=_connect_args,
-        pool_size=5,
-        max_overflow=5,
+        pool_size=10,
+        max_overflow=10,
         pool_pre_ping=True,
-        pool_recycle=60,
+        pool_recycle=300,
         pool_timeout=30,
     )
 
@@ -215,10 +221,11 @@ class User(Base):
     last_login   = Column(DateTime)
     last_seen_at = Column(DateTime)
 
-    # Google OAuth
+    # OAuth
     google_id    = Column(String(100), nullable=True, unique=True, index=True)
+    apple_id     = Column(String(100), nullable=True, unique=True, index=True)
     avatar_url   = Column(String(500), nullable=True)
-    auth_provider = Column(String(20), default="email")  # "email" | "google"
+    auth_provider = Column(String(20), default="email")  # "email" | "google" | "apple"
 
     # Relationships — SQLAlchemy automatically loads related records
     # cascade="all, delete-orphan" means: if user is deleted, all their related records are deleted too
