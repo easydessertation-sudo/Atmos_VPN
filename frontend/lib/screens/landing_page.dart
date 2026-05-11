@@ -66,7 +66,7 @@ class _ResponsiveNavbar extends StatelessWidget {
               children: [
                 ShaderMask(
                   shaderCallback: (b) => AppColors.primaryGradient.createShader(b),
-                  child: const Text('SECUREVPN',
+                  child: const Text('ATMOS VPN',
                       style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 20, letterSpacing: -1)),
                 ),
                 const Spacer(),
@@ -172,7 +172,7 @@ Widget _HeroColumn(BuildContext context) {
           ElevatedButton.icon(
             onPressed: () => Navigator.pushNamed(context, '/home'),
             icon: const Icon(Icons.arrow_forward_rounded, size: 16),
-            label: const Text('Get SecureVPN'),
+            label: const Text('Get Atmos VPN'),
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primaryBlue,
               foregroundColor: Colors.white,
@@ -229,7 +229,7 @@ class _HeroImage extends StatelessWidget {
                   children: [
                     Icon(Icons.shield_rounded, size: 80, color: AppColors.primaryBlue.withValues(alpha: 0.3)),
                     const SizedBox(height: 16),
-                    const Text('SecureVPN App', style: TextStyle(color: Colors.white54, fontSize: 16, fontWeight: FontWeight.bold)),
+                    const Text('Atmos VPN App', style: TextStyle(color: Colors.white54, fontSize: 16, fontWeight: FontWeight.bold)),
                   ],
                 ),
               ),
@@ -343,7 +343,7 @@ class _ComparisonMatrix extends StatelessWidget {
       padding: EdgeInsets.symmetric(vertical: 80, horizontal: pad),
       child: Column(
         children: [
-          const Text('WHY SECUREVPN?',
+          const Text('WHY ATMOS VPN?',
               style: TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.w900, letterSpacing: 2, fontSize: 12)),
           const SizedBox(height: 12),
           const Text('The Enterprise Advantage',
@@ -374,7 +374,7 @@ class _ComparisonMatrix extends StatelessWidget {
       Padding(padding: EdgeInsets.symmetric(vertical: 18),
           child: Text('SPEC', style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w900, fontSize: 11))),
       Padding(padding: EdgeInsets.symmetric(vertical: 18),
-          child: Text('SECUREVPN', style: TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.w900, fontSize: 11))),
+          child: Text('ATMOS VPN', style: TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.w900, fontSize: 11))),
       Padding(padding: EdgeInsets.symmetric(vertical: 18),
           child: Text('STANDARD VPN', style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w900, fontSize: 11))),
     ]);
@@ -413,7 +413,7 @@ class _EnterpriseFooter extends StatelessWidget {
               ? Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('SECUREVPN', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 22)),
+                    const Text('ATMOS VPN', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 22)),
                     const SizedBox(height: 12),
                     const Text('Redefining digital sovereignty.', style: TextStyle(color: AppColors.textSecondary)),
                     const SizedBox(height: 40),
@@ -435,7 +435,7 @@ class _EnterpriseFooter extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('SECUREVPN', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 22)),
+                          Text('ATMOS VPN', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 22)),
                           SizedBox(height: 12),
                           Text('Redefining digital sovereignty.', style: TextStyle(color: AppColors.textSecondary)),
                         ],
@@ -448,7 +448,7 @@ class _EnterpriseFooter extends StatelessWidget {
                   ],
                 ),
           const SizedBox(height: 48),
-          const Text('© 2026 SECUREVPN. ALL RIGHTS RESERVED.',
+          const Text('© 2026 ATMOS VPN. ALL RIGHTS RESERVED.',
               style: TextStyle(color: AppColors.textSecondary, fontSize: 10, letterSpacing: 1)),
         ],
       ),

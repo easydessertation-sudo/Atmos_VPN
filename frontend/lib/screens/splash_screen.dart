@@ -31,7 +31,8 @@ class _SplashScreenState extends State<SplashScreen> {
 
     if (token != null) {
       try {
-        final userData = await ApiService.getMe();
+        final userData = await ApiService.getMe()
+            .timeout(const Duration(seconds: 5));
         if (!mounted) return;
         if (userData['success'] == true) {
           Navigator.pushReplacementNamed(context, '/home');
@@ -39,14 +40,21 @@ class _SplashScreenState extends State<SplashScreen> {
         }
       } catch (e) {
         // Token invalid or network error
+        // If we catch an exception here, it means there's no internet connection
+        // (SocketException or TimeoutException). Since the user has a token,
+        // we should route them to the home screen instead of forcing a login.
+        if (mounted) {
+          Navigator.pushReplacementNamed(context, '/home');
+          return;
+        }
       }
     }
 
-    // Default: Web goes to Landing Page (/), Mobile goes to Onboarding
+    // Default: Web goes to Landing Page (/), Mobile goes to Login
     if (kIsWeb) {
       Navigator.pushReplacementNamed(context, '/');
     } else {
-      Navigator.pushReplacementNamed(context, '/onboarding');
+      Navigator.pushReplacementNamed(context, '/login');
     }
   }
 
@@ -73,7 +81,7 @@ class _SplashScreenState extends State<SplashScreen> {
               ),
             ),
           ),
-          
+
           // Content
           Center(
             child: Column(
@@ -95,22 +103,30 @@ class _SplashScreenState extends State<SplashScreen> {
                     color: AppColors.primaryBlue,
                   ),
                 )
-                .animate(onPlay: (controller) => controller.repeat())
-                .scale(duration: 1.seconds, curve: Curves.easeInOut, begin: const Offset(1, 1), end: const Offset(1.1, 1.1))
-                .then()
-                .scale(duration: 1.seconds, curve: Curves.easeInOut, begin: const Offset(1.1, 1.1), end: const Offset(1, 1))
-                .shimmer(delay: 800.ms, duration: 1200.ms),
+                    .animate(onPlay: (controller) => controller.repeat())
+                    .scale(
+                        duration: 1.seconds,
+                        curve: Curves.easeInOut,
+                        begin: const Offset(1, 1),
+                        end: const Offset(1.1, 1.1))
+                    .then()
+                    .scale(
+                        duration: 1.seconds,
+                        curve: Curves.easeInOut,
+                        begin: const Offset(1.1, 1.1),
+                        end: const Offset(1, 1))
+                    .shimmer(delay: 800.ms, duration: 1200.ms),
 
                 const SizedBox(height: 32),
-                
+
                 // Branding
                 Text(
-                  "SecureVPN",
+                  "Atmos VPN",
                   style: Theme.of(context).textTheme.displayMedium?.copyWith(
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -1.5,
-                    color: Colors.white,
-                  ),
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -1.5,
+                        color: Colors.white,
+                      ),
                 ).animate().fadeIn(delay: 400.ms).moveY(begin: 20, end: 0),
 
                 const SizedBox(height: 12),
@@ -118,10 +134,10 @@ class _SplashScreenState extends State<SplashScreen> {
                 Text(
                   "FAST • PRIVATE • GLOBAL",
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: AppColors.textSecondary,
-                    letterSpacing: 3,
-                    fontWeight: FontWeight.bold,
-                  ),
+                        color: AppColors.textSecondary,
+                        letterSpacing: 3,
+                        fontWeight: FontWeight.bold,
+                      ),
                 ).animate().fadeIn(delay: 600.ms),
 
                 const SizedBox(height: 60),
@@ -132,7 +148,8 @@ class _SplashScreenState extends State<SplashScreen> {
                   height: 40,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryBlue),
+                    valueColor:
+                        AlwaysStoppedAnimation<Color>(AppColors.primaryBlue),
                   ),
                 ).animate().fadeIn(delay: 1.seconds),
               ],

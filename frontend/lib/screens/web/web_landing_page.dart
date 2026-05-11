@@ -190,7 +190,7 @@ class _LogoHomeLink extends StatelessWidget {
             child: const Icon(Icons.shield_rounded, color: Colors.white, size: 18),
           ),
           const SizedBox(width: 10),
-          const Text('SecureVPN', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: Colors.white)),
+          const Text('Atmos VPN', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: Colors.white)),
         ]),
       ),
     );
@@ -419,7 +419,7 @@ class _HeroText extends StatelessWidget {
           children: [
             Builder(
               builder: (ctx) => _PillButton(
-                label: '→  Get SecureVPN — Free 7 Days',
+                label: '→  Get Atmos VPN — Free 7 Days',
                 onTap: () => Navigator.pushNamed(ctx, '/signup'),
                 color: AppColors.primaryBlue,
                 large: true,
@@ -1430,7 +1430,7 @@ class _WebFooter extends StatelessWidget {
                     Row(children: [
                       Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(gradient: AppColors.primaryGradient, borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.shield_rounded, color: Colors.white, size: 18)),
                       const SizedBox(width: 10),
-                      const Text('SecureVPN', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 20, color: Colors.white)),
+                      const Text('Atmos VPN', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 20, color: Colors.white)),
                     ]),
                     const SizedBox(height: 16),
                     Text('Protecting digital freedom\nsince 2024.', style: TextStyle(color: Colors.white.withValues(alpha: 0.4), height: 1.6)),
@@ -1476,7 +1476,7 @@ class _WebFooter extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('© 2026 SecureVPN Ltd. All rights reserved.', style: TextStyle(color: Colors.white.withValues(alpha: 0.25), fontSize: 12)),
+              Text('© 2026 Atmos VPN Ltd. All rights reserved.', style: TextStyle(color: Colors.white.withValues(alpha: 0.25), fontSize: 12)),
               Text('🇬🇧 English  |  Privacy Choice', style: TextStyle(color: Colors.white.withValues(alpha: 0.25), fontSize: 12)),
             ],
           ),

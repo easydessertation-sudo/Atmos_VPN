@@ -370,12 +370,12 @@ class BlogPage extends StatelessWidget {
       GestureDetector(onTap: () => Navigator.pushNamed(context, '/'), child: Row(children: [
         Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(gradient: AppColors.primaryGradient, borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.shield_rounded, size: 18, color: Colors.white)),
         const SizedBox(width: 10),
-        const Text('SecureVPN', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: Colors.white)),
+        const Text('Atmos VPN', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: Colors.white)),
         const SizedBox(width: 8),
         Text('/ Blog', style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 14)),
       ])),
       const Spacer(),
-      ElevatedButton(onPressed: () => Navigator.pushNamed(context, '/signup'), style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryBlue, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))), child: const Text('Get SecureVPN', style: TextStyle(fontWeight: FontWeight.w800, color: Colors.white))),
+      ElevatedButton(onPressed: () => Navigator.pushNamed(context, '/signup'), style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryBlue, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))), child: const Text('Get Atmos VPN', style: TextStyle(fontWeight: FontWeight.w800, color: Colors.white))),
     ]),
   );
 }
@@ -468,7 +468,7 @@ class CareersPage extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 60, vertical: 20),
             decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.4), border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.07)))),
             child: Row(children: [
-              GestureDetector(onTap: () => Navigator.pushNamed(context, '/'), child: const Text('← SecureVPN', style: TextStyle(color: Colors.white60, fontSize: 14))),
+              GestureDetector(onTap: () => Navigator.pushNamed(context, '/'), child: const Text('← Atmos VPN', style: TextStyle(color: Colors.white60, fontSize: 14))),
               const Spacer(),
             ]),
           )),
@@ -486,7 +486,7 @@ class CareersPage extends StatelessWidget {
                 const SizedBox(width: 20),
                 Expanded(child: _PerkCard(Icons.beach_access_rounded, 'Unlimited Holiday', 'We trust you to manage your own time. No arbitrary limits.')),
                 const SizedBox(width: 20),
-                Expanded(child: _PerkCard(Icons.trending_up_rounded, 'Equity', 'Every employee gets meaningful equity in SecureVPN Ltd.')),
+                Expanded(child: _PerkCard(Icons.trending_up_rounded, 'Equity', 'Every employee gets meaningful equity in Atmos VPN Ltd.')),
                 const SizedBox(width: 20),
                 Expanded(child: _PerkCard(Icons.school_rounded, 'Learning Budget', '£2,000/year for courses, books, and conferences.')),
               ]),
@@ -644,7 +644,7 @@ const _cookieSections = <(String, String)>[
   ('What cookies do we use?', 'Essential: Session tokens required for authentication and account security. These cannot be disabled.\n\nAnalytics (optional): We use privacy-preserving analytics to understand how our marketing site is used. These never include VPN usage data.\n\nPreferences: Remember your language and UI theme preferences.'),
   ('What we do NOT do', 'We do not use advertising cookies or sell cookie data to third parties. We do not track your VPN usage through cookies.'),
   ('Managing cookies', 'You can disable non-essential cookies at any time via your browser settings or by using our cookie preference centre (linked in the site footer).'),
-  ('Contact', 'Questions about cookies? Email us at privacy@securevpn.com'),
+  ('Contact', 'Questions about cookies? Email us at privacy@atmosvpn.com'),
 ];
 
 // Shared web top bar + footer (matches Privacy Policy styling)
@@ -709,7 +709,7 @@ class _LogoHomeLink extends StatelessWidget {
             child: const Icon(Icons.shield_rounded, color: Colors.white, size: 18),
           ),
           const SizedBox(width: 10),
-          const Text('SecureVPN', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: Colors.white)),
+          const Text('Atmos VPN', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: Colors.white)),
         ]),
       ),
     );
@@ -861,12 +861,12 @@ class GdprPage extends StatelessWidget {
           Container(padding: const EdgeInsets.all(24), decoration: BoxDecoration(color: AppColors.success.withValues(alpha: 0.07), borderRadius: BorderRadius.circular(16), border: Border.all(color: AppColors.success.withValues(alpha: 0.2))), child: const Row(children: [
             Icon(Icons.verified_user_rounded, color: AppColors.success, size: 24),
             SizedBox(width: 14),
-            Expanded(child: Text('SecureVPN Ltd is registered with the Information Commissioner\'s Office (ICO) in the UK. We are fully compliant with UK GDPR and the Data Protection Act 2018.', style: TextStyle(color: Colors.white70, height: 1.6))),
+            Expanded(child: Text('Atmos VPN Ltd is registered with the Information Commissioner\'s Office (ICO) in the UK. We are fully compliant with UK GDPR and the Data Protection Act 2018.', style: TextStyle(color: Colors.white70, height: 1.6))),
           ])),
           const SizedBox(height: 40),
           ...[
             ('Your Rights Under UK GDPR', 'As a UK/EU resident, you have the following rights:\n\n• Right to Access: Request a copy of all personal data we hold about you.\n• Right to Rectification: Correct inaccurate or incomplete data.\n• Right to Erasure: Request deletion of your personal data ("right to be forgotten").\n• Right to Restriction: Ask us to pause processing your data.\n• Right to Data Portability: Receive your data in a machine-readable format.\n• Right to Object: Object to processing based on legitimate interests.\n• Rights related to automated decision-making: We do not use automated decision-making.'),
-            ('How to Exercise Your Rights', 'Email privacy@securevpn.com with the subject line "GDPR Rights Request". We will respond within 30 days. We may need to verify your identity before processing requests. There is no charge for exercising your rights.'),
+            ('How to Exercise Your Rights', 'Email privacy@atmosvpn.com with the subject line "GDPR Rights Request". We will respond within 30 days. We may need to verify your identity before processing requests. There is no charge for exercising your rights.'),
             ('Legal Bases for Processing', 'Contract performance: Processing your account data to provide the VPN service.\nLegal obligation: Retaining billing records as required by UK law.\nLegitimate interests: Preventing fraud and maintaining service security.'),
             ('Data Transfers', 'Our VPN servers are located worldwide. When your VPN traffic routes through servers in other countries, this is part of the service you have contracted. This is not a transfer of your personal data — no personal data is stored on VPN servers.'),
             ('Supervisory Authority', 'If you believe we have violated your data rights, you have the right to lodge a complaint with the Information Commissioner\'s Office (ICO) at ico.org.uk'),

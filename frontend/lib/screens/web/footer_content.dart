@@ -494,7 +494,7 @@ class _FooterBottomBar extends StatelessWidget {
       decoration: BoxDecoration(border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.05)))),
       child: isMobile
           ? Column(children: [
-              Text('© 2026 SecureVPN Ltd.', style: TextStyle(color: Colors.white.withValues(alpha: 0.25), fontSize: 12)),
+              Text('© 2026 Atmos VPN Ltd.', style: TextStyle(color: Colors.white.withValues(alpha: 0.25), fontSize: 12)),
               const SizedBox(height: 10),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -515,7 +515,7 @@ class _FooterBottomBar extends StatelessWidget {
             ])
           : Row(
               children: [
-                Text('© 2026 SecureVPN Ltd.', style: TextStyle(color: Colors.white.withValues(alpha: 0.25), fontSize: 12)),
+                Text('© 2026 Atmos VPN Ltd.', style: TextStyle(color: Colors.white.withValues(alpha: 0.25), fontSize: 12)),
                 const Spacer(),
                 ...['/privacy-policy', '/terms', '/cookie-policy'].map((r) => TextButton(
                   onPressed: () => Navigator.pushNamed(context, r),
@@ -546,7 +546,7 @@ class _LogoHomeLink extends StatelessWidget {
             child: const Icon(Icons.shield_rounded, color: Colors.white, size: 18),
           ),
           const SizedBox(width: 10),
-          const Text('SecureVPN', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: Colors.white)),
+          const Text('Atmos VPN', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: Colors.white)),
         ]),
       ),
     );

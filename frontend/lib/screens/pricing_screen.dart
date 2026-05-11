@@ -1,12 +1,110 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../utils/design_system.dart';
 import '../widgets/app_container.dart';
 import '../utils/responsive.dart';
+import '../utils/api_service.dart';
+import 'package:provider/provider.dart';
+import '../main.dart';
 import 'web/landing_footer.dart';
 
-class PricingScreen extends StatelessWidget {
+class PricingScreen extends StatefulWidget {
   const PricingScreen({super.key});
+
+  @override
+  State<PricingScreen> createState() => _PricingScreenState();
+}
+
+class _PricingScreenState extends State<PricingScreen> {
+  List<dynamic> _plans = [];
+  bool _isLoading = true;
+
+  @override 
+  void initState() {
+    super.initState();
+    _fetchPlans();
+  }
+
+  Future<void> _fetchPlans() async {
+    try {
+      final response = await ApiService.getPlans();
+      print('PLANS RESPONSE: $response'); // Debug response
+      
+      if (response['success'] == true) {
+        if (mounted) {
+          setState(() {
+            final data = response['data'];
+            List<dynamic> parsedPlans = [];
+            
+            if (data is List) {
+              parsedPlans = data;
+            } else if (data is Map) {
+              // The API returns a map like: { "free": {...}, "starter": {...}, "pro": {...} }
+              parsedPlans = data.entries.map((e) {
+                var plan = Map<String, dynamic>.from(e.value);
+                plan['id'] = e.key; // Inject the key as the plan ID
+                plan['price_monthly'] = plan['monthly_usd'] ?? 0; // Map API field to UI field
+                return plan;
+              }).toList();
+            }
+
+            _plans = parsedPlans.where((p) => p['id'] != 'free').toList();
+            _isLoading = false;
+          });
+        }
+      } else {
+        print('PLANS FAILED: ${response['message']}');
+        if (mounted) setState(() => _isLoading = false);
+      }
+    } catch (e) {
+      print('PLANS ERROR: $e');
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _checkout(String planId) async {
+    try {
+      final response = await ApiService.createCheckout(planId, 'monthly');
+      if (response['success'] == true) {
+        final url = response['data']['checkout_url'];
+        if (await canLaunchUrl(Uri.parse(url))) {
+          await launchUrl(
+            Uri.parse(url), 
+            mode: LaunchMode.inAppWebView,
+            webViewConfiguration: const WebViewConfiguration(enableJavaScript: true),
+          );
+          
+          // Workaround for Android in-app webview not supporting deep links:
+          // When the user closes the payment window, we manually check if they upgraded!
+          if (mounted) {
+            final vpn = context.read<VPNProvider>();
+            final wasFree = vpn.isFreeUser;
+            await vpn.fetchProfile(); // Refresh from backend
+            
+            if (wasFree && !vpn.isFreeUser) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Payment Successful! Premium Unlocked.', style: TextStyle(fontWeight: FontWeight.bold)),
+                  backgroundColor: AppColors.success,
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+              Navigator.pushReplacementNamed(context, '/dashboard');
+            }
+          }
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(response['message'] ?? 'Checkout failed')));
+        }
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Error initiating checkout. Are you logged in?')));
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -43,65 +141,52 @@ class PricingScreen extends StatelessWidget {
                     
                     const SizedBox(height: 48),
 
-                    Builder(builder: (context) {
-                      final cards = [
-                        _buildPricingCard(
-                          context,
-                          name: 'MONTHLY',
-                          price: '£9.99',
-                          period: 'month',
-                          description: 'Best for short-term protection',
-                          color: AppColors.primaryBlue,
-                          features: ['Unlimited Data', 'All 90+ Locations', '5 Devices', 'Standard Speed'],
-                          delay: 300.ms,
-                        ),
-                        _buildPricingCard(
-                          context,
-                          name: 'ANNUAL',
-                          price: '£4.99',
-                          period: 'month',
-                          isPopular: true,
-                          badge: 'SAVE 50%',
-                          description: 'Billed annually (£59.88/yr)',
-                          color: AppColors.neonCyan,
-                          features: ['Ultra-Fast 10Gbps Servers', 'Unlimited Devices', 'Ad Blocker + Malware Guard', '24/7 Priority Support'],
-                          delay: 450.ms,
-                        ),
-                        _buildPricingCard(
-                          context,
-                          name: 'LIFETIME',
-                          price: '£199',
-                          period: 'once',
-                          description: 'One-time payment, forever yours',
-                          color: AppColors.accentPurple,
-                          features: ['All Future Pro Features', 'Early Access to New Nodes', 'Dedicated IP Option', 'Personal Account Manager'],
-                          delay: 600.ms,
-                        ),
-                      ];
+                    if (_isLoading)
+                      const Center(child: Padding(padding: EdgeInsets.all(40), child: CircularProgressIndicator(color: AppColors.primaryBlue)))
+                    else if (_plans.isEmpty)
+                      const Center(child: Padding(padding: EdgeInsets.all(40), child: Text('No premium plans available right now.', style: TextStyle(color: AppColors.textSecondary))))
+                    else
+                      Builder(builder: (context) {
+                        final cards = _plans.asMap().entries.map((entry) {
+                          final i = entry.key;
+                          final plan = entry.value;
+                          final isPopular = plan['id'] == 'pro'; // Highlight Pro as popular
+                          return _buildPricingCard(
+                            context,
+                            name: plan['name'].toString().toUpperCase(),
+                            price: '£${plan['price_monthly']}',
+                            period: 'month',
+                            description: plan['id'] == 'premium' ? 'For ultimate privacy & power' : 'Perfect for regular users',
+                            color: isPopular ? AppColors.neonCyan : (i == 0 ? AppColors.primaryBlue : AppColors.accentPurple),
+                            features: [
+                              plan['bandwidth_gb'] == null ? 'Unlimited Data' : '${plan['bandwidth_gb']} GB Data',
+                              plan['speed_mbps'] == null ? 'Ultra-Fast Speeds' : 'Up to ${plan['speed_mbps']} Mbps',
+                              '${plan['devices']} Devices',
+                              if (plan['dedicated_ip'] == true) 'Dedicated IP Included',
+                            ],
+                            delay: (300 + i * 150).ms,
+                            isPopular: isPopular,
+                            badge: isPopular ? 'MOST POPULAR' : null,
+                            onSelect: () => _checkout(plan['id']),
+                          );
+                        }).toList();
 
-                      if (Responsive.isMobile(context)) {
-                        return Column(
-                          children: [
-                            cards[0],
-                            const SizedBox(height: 24),
-                            cards[1],
-                            const SizedBox(height: 24),
-                            cards[2],
-                          ],
+                        if (Responsive.isMobile(context)) {
+                          return Column(
+                            children: cards.map((c) => Padding(padding: const EdgeInsets.only(bottom: 24), child: c)).toList(),
+                          );
+                        }
+
+                        return Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: cards.map((c) => Expanded(
+                            child: Padding(
+                              padding: EdgeInsets.only(right: c != cards.last ? 24 : 0),
+                              child: c,
+                            )
+                          )).toList(),
                         );
-                      }
-
-                      return Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(child: cards[0]),
-                          const SizedBox(width: 24),
-                          Expanded(child: cards[1]),
-                          const SizedBox(width: 24),
-                          Expanded(child: cards[2]),
-                        ],
-                      );
-                    }),
+                      }),
 
                     const SizedBox(height: 32),
                     
@@ -134,6 +219,7 @@ class PricingScreen extends StatelessWidget {
     required Duration delay,
     bool isPopular = false,
     String? badge,
+    required VoidCallback onSelect,
   }) {
     return Container(
       decoration: BoxDecoration(
@@ -212,10 +298,10 @@ class PricingScreen extends StatelessWidget {
                 
                 const SizedBox(height: 24),
                 
-                MouseRegion(
-                  cursor: SystemMouseCursors.click,
-                  child: ElevatedButton(
-                    onPressed: () {},
+                  MouseRegion(
+                    cursor: SystemMouseCursors.click,
+                    child: ElevatedButton(
+                      onPressed: onSelect,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: isPopular ? color : AppColors.divider,
                       foregroundColor: isPopular ? Colors.white : Colors.white70,
@@ -295,7 +381,7 @@ class _LogoHomeLink extends StatelessWidget {
             child: const Icon(Icons.shield_rounded, color: Colors.white, size: 18),
           ),
           const SizedBox(width: 10),
-          const Text('SecureVPN', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: Colors.white)),
+          const Text('Atmos VPN', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: Colors.white)),
         ]),
       ),
     );
@@ -437,7 +523,7 @@ class _PricingFooter extends StatelessWidget {
       decoration: BoxDecoration(border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.05)))),
       child: isMobile
           ? Column(children: [
-              Text('© 2026 SecureVPN Ltd.', style: TextStyle(color: Colors.white.withValues(alpha: 0.25), fontSize: 12)),
+              Text('© 2026 Atmos VPN Ltd.', style: TextStyle(color: Colors.white.withValues(alpha: 0.25), fontSize: 12)),
               const SizedBox(height: 10),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -458,7 +544,7 @@ class _PricingFooter extends StatelessWidget {
             ])
           : Row(
               children: [
-                Text('© 2026 SecureVPN Ltd.', style: TextStyle(color: Colors.white.withValues(alpha: 0.25), fontSize: 12)),
+                Text('© 2026 Atmos VPN Ltd.', style: TextStyle(color: Colors.white.withValues(alpha: 0.25), fontSize: 12)),
                 const Spacer(),
                 ...['/privacy-policy', '/terms', '/cookie-policy'].map((r) => TextButton(
                   onPressed: () => Navigator.pushNamed(context, r),

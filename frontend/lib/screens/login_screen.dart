@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:google_sign_in/google_sign_in.dart';
 import '../utils/design_system.dart';
 import '../utils/api_service.dart';
 import '../widgets/app_container.dart';
+import '../widgets/password_text_field.dart';
 import '../main.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -21,64 +23,185 @@ class _LoginScreenState extends State<LoginScreen> {
   String? _error;
 
   Future<void> _login() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+
+    // --- Client-side validation ---
+    final emailRegex = RegExp(r'^[\w\-.+]+@[\w\-]+\.[a-zA-Z]{2,}$');
+    if (email.isEmpty) {
+      setState(() => _error = 'Please enter your email address.');
+      return;
+    }
+    if (!emailRegex.hasMatch(email)) {
+      setState(() => _error = 'Please enter a valid email address.');
+      return;
+    }
+    if (password.isEmpty) {
+      setState(() => _error = 'Please enter your password.');
+      return;
+    }
+    if (password.length < 8) {
+      setState(() => _error = 'Password must be at least 8 characters.');
+      return;
+    }
+    // --- End validation ---
+
     setState(() {
       _isLoading = true;
       _error = null;
     });
 
     try {
-      final response = await ApiService.login(
-        _emailController.text.trim(),
-        _passwordController.text,
-      );
+      final response = await ApiService.login(email, password);
 
       if (response['success'] == true) {
         if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Row(
+                children: [
+                  Icon(Icons.check_circle_outline_rounded, color: Colors.white, size: 20),
+                  SizedBox(width: 12),
+                  Text('Login Successful! Welcome back.', style: TextStyle(fontWeight: FontWeight.bold)),
+                ],
+              ),
+              backgroundColor: AppColors.success,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
           await context.read<VPNProvider>().fetchProfile();
           if (mounted) {
             Navigator.pushReplacementNamed(context, '/dashboard');
           }
         }
       } else {
-        setState(() => _error = response['message'] ?? 'Login failed');
+        setState(() => _error = response['detail'] ?? response['message'] ?? 'Login failed. Please try again.');
       }
     } catch (e) {
-      setState(() => _error = 'An error occurred. Check your connection.');
+      setState(() => _error = e.toString().replaceAll('Exception: ', ''));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
   Future<void> _handleSocialLogin(String provider) async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
-
-    // Simulate network delay
-    await Future.delayed(const Duration(seconds: 1));
-
-    if (mounted) {
-      // In a real app, this would trigger OAuth
-      // For testing, we'll auto-login to a demo account or show success
-      // Let's simulate a successful auto-login for testing purposes
-      setState(() => _isLoading = false);
-      
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          backgroundColor: AppColors.cardBackground,
-          title: Text('Sign in with $provider', style: const TextStyle(color: Colors.white)),
-          content: Text('Simulating successful $provider authentication...', style: const TextStyle(color: AppColors.textSecondary)),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pushReplacementNamed(context, '/dashboard'),
-              child: const Text('CONTINUE', style: TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.bold)),
-            ),
-          ],
+    if (provider != 'Google') {
+      // Apple Sign In — coming soon
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Apple Sign In coming soon!'),
+          backgroundColor: Colors.black54,
+          behavior: SnackBarBehavior.floating,
         ),
       );
+      return;
     }
+
+    setState(() { _isLoading = true; _error = null; });
+
+    try {
+      await GoogleSignIn.instance.initialize(
+        serverClientId: '755976865784-073d2g9qun1ae6eht8er591vge24gph7.apps.googleusercontent.com',
+      );
+      final account = await GoogleSignIn.instance.authenticate();
+      if (account == null) {
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      final idToken = account.authentication.idToken;
+
+      if (idToken == null) {
+        setState(() {
+          _isLoading = false;
+          _error = 'Google sign-in failed. Please try again.';
+        });
+        return;
+      }
+
+      // Send ID token to our backend (Flow B)
+      final response = await ApiService.googleVerify(idToken);
+
+      if (response['success'] == true) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(Icons.check_circle_outline_rounded, color: Colors.white, size: 20),
+                  const SizedBox(width: 12),
+                  Text('Welcome, ${response['data']['user']['full_name'] ?? 'back'}!',
+                      style: const TextStyle(fontWeight: FontWeight.bold)),
+                ],
+              ),
+              backgroundColor: AppColors.success,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+          await context.read<VPNProvider>().fetchProfile();
+          if (mounted) Navigator.pushReplacementNamed(context, '/dashboard');
+        }
+      } else {
+        setState(() => _error = response['message'] ?? 'Google sign-in failed. Please try again.');
+      }
+    } catch (e) {
+      setState(() => _error = 'Google sign-in failed: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _showForgotPasswordDialog(BuildContext context) {
+    final emailCtrl = TextEditingController(text: _emailController.text);
+    bool isSubmitting = false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            backgroundColor: AppColors.cardBackground,
+            title: const Text('Reset Password', style: TextStyle(color: Colors.white)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Enter your email address to receive a password reset link.', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: emailCtrl,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(
+                    labelText: 'Email Address',
+                    labelStyle: TextStyle(color: AppColors.textSecondary),
+                    enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: AppColors.divider)),
+                    focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: AppColors.primaryBlue)),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary))),
+              ElevatedButton(
+                onPressed: isSubmitting ? null : () async {
+                  if (emailCtrl.text.isEmpty) return;
+                  setState(() => isSubmitting = true);
+                  final resp = await ApiService.forgotPassword(emailCtrl.text);
+                  
+                  if (ctx.mounted) {
+                    Navigator.pop(ctx);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(resp['success'] == true ? 'Reset link sent! Check your email.' : (resp['message'] ?? 'Failed to send link'))),
+                    );
+                  }
+                },
+                style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryBlue, foregroundColor: Colors.white),
+                child: isSubmitting ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Send Link'),
+              ),
+            ],
+          );
+        }
+      ),
+    );
   }
 
   @override
@@ -208,7 +331,7 @@ class _LoginScreenState extends State<LoginScreen> {
               Align(
                 alignment: Alignment.centerRight,
                 child: TextButton(
-                  onPressed: () {},
+                  onPressed: () => _showForgotPasswordDialog(context),
                   child: const Text('Forgot Password?', style: TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.w700)),
                 ),
               ),
@@ -278,24 +401,11 @@ class _LoginScreenState extends State<LoginScreen> {
     required IconData icon,
     bool isPassword = false,
   }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.cardBackground,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.divider),
-      ),
-      child: TextField(
-        controller: controller,
-        obscureText: isPassword,
-        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-        decoration: InputDecoration(
-          labelText: label,
-          labelStyle: const TextStyle(color: AppColors.textSecondary),
-          prefixIcon: Icon(icon, color: AppColors.textSecondary),
-          border: InputBorder.none,
-          contentPadding: const EdgeInsets.all(20),
-        ),
-      ),
+    return PasswordTextField(
+      controller: controller,
+      label: label,
+      icon: icon,
+      isPassword: isPassword,
     );
   }
 

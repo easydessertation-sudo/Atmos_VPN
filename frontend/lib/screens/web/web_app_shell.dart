@@ -76,7 +76,7 @@ class _Sidebar extends StatelessWidget {
                 ),
                 if (expanded) ...[
                   const SizedBox(width: 12),
-                  const Text('SecureVPN', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: Colors.white)),
+                  const Text('Atmos VPN', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: Colors.white)),
                   const Spacer(),
                 ],
               ],
@@ -216,10 +216,40 @@ class _TopBar extends StatelessWidget {
           ),
           const Spacer(),
           // Quick actions
-          IconButton(
-            icon: const Icon(Icons.notifications_none_rounded, color: Colors.white38),
-            onPressed: () {},
-            mouseCursor: SystemMouseCursors.click,
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.notifications_none_rounded, color: Colors.white38),
+                onPressed: () => Navigator.pushNamed(context, '/notifications'),
+                mouseCursor: SystemMouseCursors.click,
+              ),
+              if (vpn.unreadCount > 0)
+                Positioned(
+                  right: 8,
+                  top: 8,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: const BoxDecoration(
+                      color: AppColors.warning,
+                      shape: BoxShape.circle,
+                    ),
+                    constraints: const BoxConstraints(
+                      minWidth: 16,
+                      minHeight: 16,
+                    ),
+                    child: Text(
+                      '${vpn.unreadCount}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+            ],
           ),
           const SizedBox(width: 8),
           MouseRegion(

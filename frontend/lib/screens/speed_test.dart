@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../utils/design_system.dart';
 import '../widgets/app_container.dart';
+import '../utils/api_service.dart';
 
 class SpeedTestScreen extends StatefulWidget {
   const SpeedTestScreen({super.key});
@@ -12,8 +13,13 @@ class SpeedTestScreen extends StatefulWidget {
 
 class _SpeedTestScreenState extends State<SpeedTestScreen> with TickerProviderStateMixin {
   bool _isTesting = false;
-  double _speed = 0.0;
-  double _progress = 0.0;
+  double _speed = 0.0;      // displayed Mbps number
+  double _progress = 0.0;  // arc fill 0.0 → 1.0
+  double _maxSpeed = 200.0; // gauge max — auto-scaled after test
+  String _uploadSpeed = '--';
+  String _ping = '--';
+  String _jitter = '--';
+  String? _error;
   late AnimationController _gaugeController;
 
   @override
@@ -28,27 +34,94 @@ class _SpeedTestScreenState extends State<SpeedTestScreen> with TickerProviderSt
     super.dispose();
   }
 
+  /// Smoothly animate _speed and _progress from current to target
+  Future<void> _animateTo(double targetSpeed, {int steps = 30, int msPerStep = 16}) async {
+    final startSpeed = _speed;
+    final startProgress = _progress;
+    final targetProgress = (targetSpeed / _maxSpeed).clamp(0.0, 1.0);
+    for (int i = 1; i <= steps; i++) {
+      if (!mounted) return;
+      await Future.delayed(Duration(milliseconds: msPerStep));
+      final t = i / steps;
+      // ease-out curve
+      final ease = 1 - (1 - t) * (1 - t);
+      setState(() {
+        _speed = startSpeed + (targetSpeed - startSpeed) * ease;
+        _progress = startProgress + (targetProgress - startProgress) * ease;
+      });
+    }
+  }
+
   void _runTest() async {
     setState(() {
       _isTesting = true;
       _speed = 0.0;
       _progress = 0.0;
+      _maxSpeed = 200.0;
+      _uploadSpeed = '--';
+      _ping = '--';
+      _jitter = '--';
+      _error = null;
     });
 
-    // Simulate download test
-    for (int i = 0; i <= 100; i++) {
+    // Start API call immediately (runs in background)
+    final apiFuture = ApiService.runSpeedTest();
+
+    // --- Phase 1: Ramp up to simulate testing (0 → ~60% of max) ---
+    await _animateTo(_maxSpeed * 0.60, steps: 60, msPerStep: 25);
+
+    // --- Phase 2: Fluctuate while waiting for real result ---
+    bool apiDone = false;
+    apiFuture.then((_) => apiDone = true);
+    for (int i = 0; i < 40 && !apiDone; i++) {
       if (!mounted) return;
-      await Future.delayed(50.ms);
-      setState(() {
-        _progress = i / 100;
-        // Random-looking speed curve
-        if (i < 30) _speed = i * 4.5 + (10 * (i % 3));
-        if (i >= 30 && i < 70) _speed = 135 + (20 * (i % 5));
-        if (i >= 70) _speed = 158 + (5 * (i % 2));
-      });
+      final fluctuation = _maxSpeed * 0.60 + (20.0 * ((i % 6) - 3));
+      await _animateTo(fluctuation, steps: 8, msPerStep: 20);
     }
 
-    setState(() => _isTesting = false);
+    try {
+      final response = await apiFuture;
+      print('SPEED TEST RESPONSE: $response');
+      if (response['success'] == true) {
+        final data = response['data'];
+        final realSpeed = (data['download_mbps'] as num? ?? 0).toDouble();
+
+        // Auto-scale max to fit real result with headroom
+        if (realSpeed > _maxSpeed * 0.85) {
+          setState(() => _maxSpeed = (realSpeed * 1.3).ceilToDouble());
+        }
+
+        // --- Phase 3: Animate to real speed ---
+        await _animateTo(realSpeed, steps: 50, msPerStep: 20);
+
+        // Set final values
+        if (mounted) {
+          setState(() {
+            _speed = realSpeed;
+            _progress = (realSpeed / _maxSpeed).clamp(0.0, 1.0);
+            _uploadSpeed = ((data['upload_mbps'] as num?) ?? 0).toDouble().toStringAsFixed(1);
+            _ping = (data['ping_ms'] ?? data['latency_ms'] ?? '--').toString();
+            _jitter = ((data['jitter_ms'] as num?) ?? (data['latency_ms'] as num?) ?? 0).toDouble().toStringAsFixed(1);
+          });
+        }
+      } else {
+        throw Exception(response['message'] ?? 'Speed test failed');
+      }
+    } catch (e) {
+      print('SPEED TEST ERROR: $e');
+      if (mounted) {
+        setState(() {
+          _progress = 0.0;
+          _speed = 0.0;
+          _uploadSpeed = '--';
+          _ping = '--';
+          _jitter = '--';
+          _error = e.toString().replaceAll('Exception: ', '');
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _isTesting = false);
+    }
   }
 
   @override
@@ -123,6 +196,26 @@ class _SpeedTestScreenState extends State<SpeedTestScreen> with TickerProviderSt
                             : const Text('START SPEED TEST', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.5)),
                       ),
                     ).animate().fadeIn(delay: 500.ms),
+                    if (_error != null) ...[
+                      const SizedBox(height: 16),
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: AppColors.warning.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.error_outline_rounded, color: AppColors.warning, size: 18),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(_error!, style: const TextStyle(color: AppColors.warning, fontSize: 13)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                     SizedBox(height: isCompactHeight ? 24 : 40),
                   ],
                 ),
@@ -138,9 +231,30 @@ class _SpeedTestScreenState extends State<SpeedTestScreen> with TickerProviderSt
     final outerGlowSize = isCompact ? 240.0 : 280.0;
     final gaugeSize = isCompact ? 220.0 : 260.0;
 
+    // Dynamic color based on speed
+    final Color arcColor;
+    final String qualityLabel;
+    if (_speed == 0 && !_isTesting) {
+      arcColor = AppColors.divider;
+      qualityLabel = 'TAP TO TEST';
+    } else if (_speed < 10) {
+      arcColor = AppColors.warning;
+      qualityLabel = 'SLOW';
+    } else if (_speed < 50) {
+      arcColor = Colors.amber;
+      qualityLabel = 'GOOD';
+    } else if (_speed < 100) {
+      arcColor = AppColors.primaryBlue;
+      qualityLabel = 'FAST';
+    } else {
+      arcColor = AppColors.success;
+      qualityLabel = 'EXCELLENT';
+    }
+
     return Stack(
       alignment: Alignment.center,
       children: [
+        // Glow
         Container(
           width: outerGlowSize,
           height: outerGlowSize,
@@ -148,23 +262,26 @@ class _SpeedTestScreenState extends State<SpeedTestScreen> with TickerProviderSt
             shape: BoxShape.circle,
             boxShadow: [
               BoxShadow(
-                color: AppColors.primaryBlue.withValues(alpha: _isTesting ? 0.2 : 0.05),
-                blurRadius: 40,
-                spreadRadius: 10,
+                color: arcColor.withValues(alpha: _isTesting ? 0.25 : 0.08),
+                blurRadius: 50,
+                spreadRadius: 15,
               ),
             ],
           ),
         ),
+        // Gauge arc
         SizedBox(
           width: gaugeSize,
           height: gaugeSize,
           child: CircularProgressIndicator(
             value: _progress,
-            strokeWidth: 12,
+            strokeWidth: 14,
+            strokeCap: StrokeCap.round,
             backgroundColor: AppColors.divider,
-            valueColor: const AlwaysStoppedAnimation<Color>(AppColors.primaryBlue),
+            valueColor: AlwaysStoppedAnimation<Color>(arcColor),
           ),
         ),
+        // Center content
         Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -189,12 +306,12 @@ class _SpeedTestScreenState extends State<SpeedTestScreen> with TickerProviderSt
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
               decoration: BoxDecoration(
-                color: AppColors.primaryBlue.withValues(alpha: 0.1),
+                color: arcColor.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: const Text(
-                'DOWNLOAD',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: AppColors.primaryBlue, letterSpacing: 1),
+              child: Text(
+                _isTesting ? 'TESTING...' : qualityLabel,
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: arcColor, letterSpacing: 1),
               ),
             ),
           ],
@@ -206,11 +323,11 @@ class _SpeedTestScreenState extends State<SpeedTestScreen> with TickerProviderSt
   Widget _buildMetricsRow() {
     return Row(
       children: [
-        Expanded(child: _buildMetric('UPLOAD', '42.8', 'Mbps', Icons.upload_rounded, AppColors.accentPurple)),
+        Expanded(child: _buildMetric('UPLOAD', _uploadSpeed, 'Mbps', Icons.upload_rounded, AppColors.accentPurple)),
         const SizedBox(width: 12),
-        Expanded(child: _buildMetric('PING', '18', 'ms', Icons.timer_rounded, AppColors.success)),
+        Expanded(child: _buildMetric('PING', _ping, 'ms', Icons.timer_rounded, AppColors.success)),
         const SizedBox(width: 12),
-        Expanded(child: _buildMetric('JITTER', '2', 'ms', Icons.trending_up_rounded, Colors.amber)),
+        Expanded(child: _buildMetric('JITTER', _jitter, 'ms', Icons.trending_up_rounded, Colors.amber)),
       ],
     ).animate().fadeIn(delay: 300.ms).slideY(begin: 0.1, end: 0);
   }

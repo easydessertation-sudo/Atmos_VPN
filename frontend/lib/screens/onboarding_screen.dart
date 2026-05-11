@@ -62,7 +62,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               Expanded(
                 child: PageView.builder(
                   controller: _pageController,
-                  onPageChanged: (index) => setState(() => _currentPage = index),
+                  onPageChanged: (index) =>
+                      setState(() => _currentPage = index),
                   itemCount: _pages.length,
                   itemBuilder: (context, index) {
                     final page = _pages[index];
@@ -92,9 +93,20 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                               color: page.color,
                             ),
                           )
-                          .animate(key: ValueKey(index))
-                          .scale(duration: 600.ms, curve: Curves.easeOutBack)
-                          .moveY(begin: 10, end: -10, duration: 2.seconds, curve: Curves.easeInOut).then().moveY(begin: -10, end: 10, duration: 2.seconds, curve: Curves.easeInOut),
+                              .animate(key: ValueKey(index))
+                              .scale(
+                                  duration: 600.ms, curve: Curves.easeOutBack)
+                              .moveY(
+                                  begin: 10,
+                                  end: -10,
+                                  duration: 2.seconds,
+                                  curve: Curves.easeInOut)
+                              .then()
+                              .moveY(
+                                  begin: -10,
+                                  end: 10,
+                                  duration: 2.seconds,
+                                  curve: Curves.easeInOut),
 
                           const SizedBox(height: 60),
 
@@ -102,21 +114,31 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           Text(
                             page.title,
                             textAlign: TextAlign.center,
-                            style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                              fontWeight: FontWeight.w900,
-                              color: AppColors.textPrimary,
-                            ),
-                          ).animate(key: ValueKey("t$index")).fadeIn(duration: 400.ms).moveY(begin: 20, end: 0),
+                            style: Theme.of(context)
+                                .textTheme
+                                .displaySmall
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w900,
+                                  color: AppColors.textPrimary,
+                                ),
+                          )
+                              .animate(key: ValueKey("t$index"))
+                              .fadeIn(duration: 400.ms)
+                              .moveY(begin: 20, end: 0),
 
                           const SizedBox(height: 16),
 
                           Text(
                             page.subtitle,
                             textAlign: TextAlign.center,
-                            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                              color: AppColors.textSecondary,
-                            ),
-                          ).animate(key: ValueKey("s$index")).fadeIn(delay: 200.ms).moveY(begin: 20, end: 0),
+                            style:
+                                Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                      color: AppColors.textSecondary,
+                                    ),
+                          )
+                              .animate(key: ValueKey("s$index"))
+                              .fadeIn(delay: 200.ms)
+                              .moveY(begin: 20, end: 0),
                         ],
                       ),
                     );
@@ -126,7 +148,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
               // Bottom Controls
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 60),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 40, vertical: 60),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -143,7 +166,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                             borderRadius: BorderRadius.circular(4),
                             color: _currentPage == index
                                 ? _pages[index].color
-                                : AppColors.textSecondary.withValues(alpha: 0.3),
+                                : AppColors.textSecondary
+                                    .withValues(alpha: 0.3),
                           ),
                         ),
                       ),
@@ -152,25 +176,31 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     // Action Button
                     _currentPage == _pages.length - 1
                         ? ElevatedButton(
-                            onPressed: () => Navigator.pushReplacementNamed(context, '/trial'),
+                            onPressed: () => Navigator.pushReplacementNamed(
+                                context, '/trial'),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: AppColors.primaryBlue,
                               foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 32, vertical: 16),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16)),
                               elevation: 0,
                             ).copyWith(
-                              shadowColor: WidgetStateProperty.all(AppColors.primaryBlue.withValues(alpha: 0.5)),
+                              shadowColor: WidgetStateProperty.all(
+                                  AppColors.primaryBlue.withValues(alpha: 0.5)),
                               elevation: WidgetStateProperty.all(10),
                             ),
-                            child: const Text("GET STARTED", style: TextStyle(fontWeight: FontWeight.w800)),
+                            child: const Text("GET STARTED",
+                                style: TextStyle(fontWeight: FontWeight.w800)),
                           ).animate().scale().fadeIn()
                         : IconButton(
                             onPressed: () => _pageController.nextPage(
                               duration: 500.ms,
                               curve: Curves.easeInOut,
                             ),
-                            icon: const Icon(Icons.arrow_forward_rounded, color: Colors.white),
+                            icon: const Icon(Icons.arrow_forward_rounded,
+                                color: Colors.white),
                             style: IconButton.styleFrom(
                               backgroundColor: AppColors.cardBackground,
                               padding: const EdgeInsets.all(16),

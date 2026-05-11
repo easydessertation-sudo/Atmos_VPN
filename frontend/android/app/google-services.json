@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "371315886913",
+    "project_id": "atmos-vpn",
+    "storage_bucket": "atmos-vpn.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:371315886913:android:ad8d95a87226e31eae2fc0",
+        "android_client_info": {
+          "package_name": "com.example.secure_vpn"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAFMO9wQfgwqN0Sse3russq7-KfB62cSDo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

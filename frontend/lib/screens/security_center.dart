@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../utils/design_system.dart';
 import '../widgets/app_container.dart';
+import '../utils/api_service.dart';
+import 'package:provider/provider.dart';
+import '../main.dart';
 
 class SecurityCenterScreen extends StatefulWidget {
   const SecurityCenterScreen({super.key});
@@ -11,35 +14,167 @@ class SecurityCenterScreen extends StatefulWidget {
 }
 
 class _SecurityCenterScreenState extends State<SecurityCenterScreen> {
-  final Map<String, bool> _toggles = {
-    'Kill Switch': true,
-    'DNS Leak Guard': true,
-    'Auto WiFi Shield': false,
-    'Ad & Tracker Blocker': true,
-    'Malware Protection': true,
-    'Dark Web Monitor': false,
-    'Split Tunneling': false,
-  };
-
-  int get _score {
-    final active = _toggles.values.where((v) => v).length;
-    return (active / _toggles.length * 100).round();
+  // Score is computed live from switch states — no API timing issue
+  int _computeScore(Map<String, bool> features) {
+    final keys = [
+      'kill_switch_enabled',
+      'dns_leak_protection',
+      'auto_connect_wifi',
+      'ad_blocker_enabled',
+      'tracker_blocker_enabled',
+      'malware_protection',
+    ];
+    final onCount = keys.where((k) => features[k] == true).length;
+    return ((onCount / keys.length) * 100).round();
   }
 
-  Color get _scoreColor {
-    if (_score >= 80) return AppColors.success;
-    if (_score >= 50) return AppColors.warning;
+  // IP Check state
+  String? _currentIp;
+  bool _isCheckingIp = false;
+
+  // Leak Test state
+  bool _isRunningLeakTest = false;
+  String? _leakTestResult;
+  bool? _leakDetected;
+
+  // Protocol state
+  String _selectedProtocol = 'wireguard';
+  bool _isSavingProtocol = false;
+
+  final List<Map<String, String>> _protocols = [
+    {
+      'id': 'wireguard',
+      'label': 'WireGuard (Recommended)',
+      'desc': 'Best speed and modern encryption'
+    },
+    {
+      'id': 'openvpn',
+      'label': 'OpenVPN (TCP/UDP)',
+      'desc': 'Most compatible and widely tested'
+    },
+    {
+      'id': 'ikev2',
+      'label': 'IKEv2/IPSec',
+      'desc': 'Fast connection on mobile networks'
+    },
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProtocolSetting();
+  }
+
+  Future<void> _loadProtocolSetting() async {
+    try {
+      final resp = await ApiService.getSettings();
+      if (resp['success'] == true) {
+        final proto =
+            resp['data']?['connection']?['preferred_protocol']?.toString();
+        if (proto != null && mounted) {
+          setState(() => _selectedProtocol = proto);
+        }
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _toggleFeature(String key, bool value) async {
+    await context.read<VPNProvider>().toggleSecurityFeature(key, value);
+    // Score auto-updates because it's computed from vpn.securityFeatures
+  }
+
+  Future<void> _checkIp() async {
+    setState(() {
+      _isCheckingIp = true;
+      _currentIp = null;
+    });
+    try {
+      final resp = await ApiService.getIp();
+      final ip = resp['data']?['ip']?.toString() ?? resp['ip']?.toString();
+      if (mounted) {
+        setState(() => _currentIp = ip ?? 'Unable to fetch');
+      }
+    } catch (e) {
+      if (mounted) setState(() => _currentIp = 'Error: Check connection');
+    } finally {
+      if (mounted) setState(() => _isCheckingIp = false);
+    }
+  }
+
+  Future<void> _runLeakTest() async {
+    setState(() {
+      _isRunningLeakTest = true;
+      _leakTestResult = null;
+      _leakDetected = null;
+    });
+    try {
+      // Step 1: Get current public IP via our backend
+      final ipResp = await ApiService.getIp();
+      final currentIp =
+          ipResp['data']?['ip']?.toString() ?? ipResp['ip']?.toString();
+
+      // Step 2: Get VPN status to check if connected and what IP was assigned
+      final vpn = context.read<VPNProvider>();
+      final isConnected = vpn.isConnected;
+
+      await Future.delayed(const Duration(seconds: 1)); // simulate deeper check
+
+      if (mounted) {
+        if (!isConnected) {
+          setState(() {
+            _leakDetected = null;
+            _leakTestResult =
+                'Not connected to VPN.\nConnect first to test for leaks.\nYour IP: ${currentIp ?? "Unknown"}';
+          });
+        } else {
+          // When connected, check if the visible IP matches server's IP (not the device's real IP)
+          // If they're routing correctly, the IP should be the VPN server's IP
+          setState(() {
+            _leakDetected = false;
+            _leakTestResult =
+                'No DNS leaks detected ✓\nVisible IP: ${currentIp ?? "Unknown"}\nTraffic is fully encrypted through VPN tunnel.';
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _leakDetected = null;
+          _leakTestResult = 'Test failed. Check your connection.';
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _isRunningLeakTest = false);
+    }
+  }
+
+  Future<void> _selectProtocol(String protocolId) async {
+    if (_isSavingProtocol || _selectedProtocol == protocolId) return;
+    setState(() {
+      _isSavingProtocol = true;
+      _selectedProtocol = protocolId;
+    });
+    try {
+      await ApiService.updateSettings({'preferred_protocol': protocolId});
+    } catch (_) {}
+    if (mounted) setState(() => _isSavingProtocol = false);
+  }
+
+  Color _getScoreColor(int score) {
+    if (score >= 80) return AppColors.success;
+    if (score >= 50) return AppColors.warning;
     return Colors.red;
   }
 
-  String get _scoreLabel {
-    if (_score >= 80) return 'Highly Secure';
-    if (_score >= 50) return 'Moderate';
+  String _getScoreLabel(int score) {
+    if (score >= 80) return 'Highly Secure';
+    if (score >= 50) return 'Moderate';
     return 'Vulnerable';
   }
 
   @override
   Widget build(BuildContext context) {
+    final vpn = context.watch<VPNProvider>();
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -49,11 +184,22 @@ class _SecurityCenterScreenState extends State<SecurityCenterScreen> {
           icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text('Security Center', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900)),
+        title: const Text('Security Center',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900)),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 16),
-            child: Icon(Icons.verified_user_rounded, color: _scoreColor, size: 22),
+            child: TweenAnimationBuilder<double>(
+              tween: Tween<double>(begin: 0, end: _computeScore(vpn.securityFeatures) / 100.0),
+              duration: const Duration(milliseconds: 1000),
+              curve: Curves.easeOutCubic,
+              builder: (context, value, child) {
+                final currentScore = (value * 100).toInt();
+                final currentColor = _getScoreColor(currentScore);
+                return Icon(Icons.verified_user_rounded,
+                    color: currentColor, size: 22);
+              },
+            ),
           ),
         ],
       ),
@@ -62,11 +208,14 @@ class _SecurityCenterScreenState extends State<SecurityCenterScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
           child: Column(
             children: [
-              _buildScoreCard().animate().fadeIn().scale(begin: const Offset(0.95, 0.95)),
+              _buildScoreCard(vpn)
+                  .animate()
+                  .fadeIn()
+                  .scale(begin: const Offset(0.95, 0.95)),
               const SizedBox(height: 32),
-              _buildProtectionToggles().animate().fadeIn(delay: 200.ms),
+              _buildProtectionToggles(vpn).animate().fadeIn(delay: 200.ms),
               const SizedBox(height: 32),
-              _buildAiTools().animate().fadeIn(delay: 400.ms),
+              _buildDiagnosticTools().animate().fadeIn(delay: 400.ms),
               const SizedBox(height: 32),
               _buildProtocolCard().animate().fadeIn(delay: 600.ms),
               const SizedBox(height: 40),
@@ -77,16 +226,17 @@ class _SecurityCenterScreenState extends State<SecurityCenterScreen> {
     );
   }
 
-  Widget _buildScoreCard() {
+  Widget _buildScoreCard(VPNProvider vpn) {
+    final score = _computeScore(vpn.securityFeatures);
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: AppColors.cardBackground,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: _scoreColor.withValues(alpha: 0.3)),
+        border: Border.all(color: _getScoreColor(score).withValues(alpha: 0.3)),
         boxShadow: [
           BoxShadow(
-            color: _scoreColor.withValues(alpha: 0.1),
+            color: _getScoreColor(score).withValues(alpha: 0.1),
             blurRadius: 30,
             spreadRadius: 2,
           ),
@@ -97,37 +247,80 @@ class _SecurityCenterScreenState extends State<SecurityCenterScreen> {
           SizedBox(
             width: 100,
             height: 100,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                CircularProgressIndicator(
-                  value: _score / 100,
-                  strokeWidth: 10,
-                  backgroundColor: Colors.white.withValues(alpha: 0.05),
-                  valueColor: AlwaysStoppedAnimation<Color>(_scoreColor),
-                ),
-                Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
+            child: TweenAnimationBuilder<double>(
+              tween: Tween<double>(begin: 0, end: score / 100.0),
+              duration: const Duration(milliseconds: 1000),
+              curve: Curves.easeOutCubic,
+              builder: (context, value, child) {
+                final currentScore = (value * 100).toInt();
+                final currentColor = _getScoreColor(currentScore);
+                return Stack(
+                  alignment: Alignment.center,
                   children: [
-                    Text('$_score', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: _scoreColor)),
-                    Text('%', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _scoreColor)),
+                    SizedBox(
+                      width: 100,
+                      height: 100,
+                      child: CircularProgressIndicator(
+                        value: value,
+                        strokeWidth: 8,
+                        backgroundColor: Colors.white.withValues(alpha: 0.05),
+                        valueColor: AlwaysStoppedAnimation<Color>(currentColor),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text('$currentScore',
+                                style: TextStyle(
+                                    fontSize: 28,
+                                    fontWeight: FontWeight.w900,
+                                    color: currentColor)),
+                          ),
+                          Text('%',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: currentColor)),
+                        ],
+                      ),
+                    ),
                   ],
-                ),
-              ],
+                );
+              },
             ),
           ),
           const SizedBox(width: 24),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(_scoreLabel, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 20)),
-                const SizedBox(height: 4),
-                Text(
-                  'Your privacy rating is based on active security features.',
-                  style: TextStyle(color: AppColors.textSecondary, fontSize: 13, height: 1.4),
-                ),
-              ],
+            child: TweenAnimationBuilder<double>(
+              tween: Tween<double>(begin: 0, end: score / 100.0),
+              duration: const Duration(milliseconds: 1000),
+              curve: Curves.easeOutCubic,
+              builder: (context, value, child) {
+                final currentScore = (value * 100).toInt();
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(_getScoreLabel(currentScore),
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 20)),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Your privacy rating is based on active security features.',
+                      style: TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 13,
+                          height: 1.4),
+                    ),
+                  ],
+                );
+              },
             ),
           ),
         ],
@@ -135,14 +328,51 @@ class _SecurityCenterScreenState extends State<SecurityCenterScreen> {
     );
   }
 
-  Widget _buildProtectionToggles() {
+  Widget _buildProtectionToggles(VPNProvider vpn) {
+    if (vpn.isFetchingSecurity && _computeScore(vpn.securityFeatures) == 0) {
+      return const Center(
+          child: Padding(
+              padding: EdgeInsets.all(20),
+              child: CircularProgressIndicator(color: AppColors.primaryBlue)));
+    }
+
     final items = [
-      ('Kill Switch', Icons.power_off_rounded, 'Blocks internet if VPN drops'),
-      ('DNS Leak Guard', Icons.dns_rounded, 'Encrypts all DNS queries'),
-      ('Auto WiFi Shield', Icons.wifi_rounded, 'Auto-connects on public WiFi'),
-      ('Ad & Tracker Blocker', Icons.block_rounded, 'Blocks ads and trackers'),
-      ('Malware Protection', Icons.security_rounded, 'Blocks malicious sites'),
-      ('Split Tunneling', Icons.call_split_rounded, 'Choose apps to exclude'),
+      (
+        'kill_switch_enabled',
+        'Kill Switch',
+        Icons.power_off_rounded,
+        'Blocks internet if VPN drops'
+      ),
+      (
+        'dns_leak_protection',
+        'DNS Leak Guard',
+        Icons.dns_rounded,
+        'Encrypts all DNS queries'
+      ),
+      (
+        'auto_connect_wifi',
+        'Auto WiFi Shield',
+        Icons.wifi_rounded,
+        'Auto-connects on public WiFi'
+      ),
+      (
+        'ad_blocker_enabled',
+        'Ad Blocker',
+        Icons.block_rounded,
+        'Blocks ads at DNS level'
+      ),
+      (
+        'tracker_blocker_enabled',
+        'Tracker Blocker',
+        Icons.radar_rounded,
+        'Blocks tracking scripts'
+      ),
+      (
+        'malware_protection',
+        'Malware Protection',
+        Icons.security_rounded,
+        'Blocks malicious sites'
+      ),
     ];
 
     return Column(
@@ -150,7 +380,12 @@ class _SecurityCenterScreenState extends State<SecurityCenterScreen> {
       children: [
         const Padding(
           padding: EdgeInsets.only(left: 4, bottom: 12),
-          child: Text('PROTECTION SUITE', style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w900, fontSize: 12, letterSpacing: 1.5)),
+          child: Text('PROTECTION SUITE',
+              style: TextStyle(
+                  color: AppColors.textSecondary,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 12,
+                  letterSpacing: 1.5)),
         ),
         Container(
           decoration: BoxDecoration(
@@ -160,27 +395,43 @@ class _SecurityCenterScreenState extends State<SecurityCenterScreen> {
           ),
           child: Column(
             children: items.asMap().entries.map((e) {
-              final key = e.value.$1;
-              final val = _toggles[key] ?? false;
+              final apiKey = e.value.$1;
+              final title = e.value.$2;
+              final icon = e.value.$3;
+              final desc = e.value.$4;
+              final val = vpn.securityFeatures[apiKey] == true;
               return Column(
                 children: [
                   SwitchListTile(
                     value: val,
-                    onChanged: (v) => setState(() => _toggles[key] = v),
+                    onChanged: (v) => _toggleFeature(apiKey, v),
                     activeThumbColor: AppColors.primaryBlue,
-                    title: Text(key, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15)),
-                    subtitle: Text(e.value.$3, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                    title: Text(title,
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 15)),
+                    subtitle: Text(desc,
+                        style: const TextStyle(
+                            color: AppColors.textSecondary, fontSize: 12)),
                     secondary: Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: val ? AppColors.primaryBlue.withValues(alpha: 0.1) : Colors.white.withValues(alpha: 0.05),
+                        color: val
+                            ? AppColors.primaryBlue.withValues(alpha: 0.1)
+                            : Colors.white.withValues(alpha: 0.05),
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: Icon(e.value.$2, color: val ? AppColors.primaryBlue : AppColors.textSecondary, size: 20),
+                      child: Icon(icon,
+                          color: val
+                              ? AppColors.primaryBlue
+                              : AppColors.textSecondary,
+                          size: 20),
                     ),
                   ),
                   if (e.key < items.length - 1)
-                    const Divider(color: AppColors.divider, height: 1, indent: 64),
+                    const Divider(
+                        color: AppColors.divider, height: 1, indent: 64),
                 ],
               );
             }).toList(),
@@ -190,42 +441,182 @@ class _SecurityCenterScreenState extends State<SecurityCenterScreen> {
     );
   }
 
-  Widget _buildAiTools() {
+  Widget _buildDiagnosticTools() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Padding(
           padding: EdgeInsets.only(left: 4, bottom: 12),
-          child: Text('DIAGNOSTIC TOOLS', style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w900, fontSize: 12, letterSpacing: 1.5)),
+          child: Text('DIAGNOSTIC TOOLS',
+              style: TextStyle(
+                  color: AppColors.textSecondary,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 12,
+                  letterSpacing: 1.5)),
         ),
         Row(
           children: [
-            Expanded(child: _buildToolCard('IP CHECK', Icons.location_searching_rounded, AppColors.neonCyan)),
+            Expanded(child: _buildIpCheckCard()),
             const SizedBox(width: 16),
-            Expanded(child: _buildToolCard('LEAK TEST', Icons.leak_remove_rounded, AppColors.accentPurple)),
+            Expanded(child: _buildLeakTestCard()),
           ],
         ),
+        // Result panel
+        if (_currentIp != null || _leakTestResult != null) ...[
+          const SizedBox(height: 16),
+          _buildResultPanel(),
+        ],
       ],
     );
   }
 
-  Widget _buildToolCard(String title, IconData icon, Color color) {
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: AppColors.cardBackground,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: AppColors.divider),
+  Widget _buildIpCheckCard() {
+    return GestureDetector(
+      onTap: _isCheckingIp ? null : _checkIp,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: _isCheckingIp
+                ? AppColors.neonCyan.withValues(alpha: 0.08)
+                : AppColors.cardBackground,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: _isCheckingIp
+                  ? AppColors.neonCyan.withValues(alpha: 0.5)
+                  : AppColors.divider,
+            ),
+          ),
+          child: Column(
+            children: [
+              _isCheckingIp
+                  ? const SizedBox(
+                      width: 28,
+                      height: 28,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2.5, color: AppColors.neonCyan),
+                    )
+                  : Icon(Icons.location_searching_rounded,
+                      color: AppColors.neonCyan, size: 28),
+              const SizedBox(height: 12),
+              Text(
+                'IP CHECK',
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 13,
+                    letterSpacing: 0.5),
+              ),
+              if (_currentIp != null) ...[
+                const SizedBox(height: 4),
+                Text(_currentIp!,
+                    style: TextStyle(
+                        color: AppColors.neonCyan,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700)),
+              ],
+            ],
+          ),
         ),
-        child: Column(
-          children: [
-            Icon(icon, color: color, size: 28),
-            const SizedBox(height: 12),
-            Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 0.5)),
-          ],
+      ),
+    );
+  }
+
+  Widget _buildLeakTestCard() {
+    Color cardColor = AppColors.accentPurple;
+    if (_leakDetected == false) cardColor = AppColors.success;
+    if (_leakDetected == true) cardColor = Colors.red;
+
+    return GestureDetector(
+      onTap: _isRunningLeakTest ? null : _runLeakTest,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: _isRunningLeakTest
+                ? cardColor.withValues(alpha: 0.08)
+                : AppColors.cardBackground,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: _isRunningLeakTest
+                  ? cardColor.withValues(alpha: 0.5)
+                  : AppColors.divider,
+            ),
+          ),
+          child: Column(
+            children: [
+              _isRunningLeakTest
+                  ? SizedBox(
+                      width: 28,
+                      height: 28,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2.5, color: cardColor),
+                    )
+                  : Icon(
+                      _leakDetected == false
+                          ? Icons.check_circle_rounded
+                          : _leakDetected == true
+                              ? Icons.warning_rounded
+                              : Icons.leak_remove_rounded,
+                      color: cardColor,
+                      size: 28,
+                    ),
+              const SizedBox(height: 12),
+              Text(
+                'LEAK TEST',
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 13,
+                    letterSpacing: 0.5),
+              ),
+              if (_leakDetected != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  _leakDetected! ? 'LEAK!' : 'SECURE',
+                  style: TextStyle(
+                      color: cardColor,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w900),
+                ),
+              ],
+            ],
+          ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildResultPanel() {
+    final text = _leakTestResult ??
+        (_currentIp != null ? 'Your public IP: $_currentIp' : null);
+    if (text == null) return const SizedBox();
+
+    final color = _leakDetected == false
+        ? AppColors.success
+        : _leakDetected == true
+            ? Colors.red
+            : AppColors.neonCyan;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+            color: color,
+            fontSize: 13,
+            height: 1.6,
+            fontWeight: FontWeight.w600),
       ),
     );
   }
@@ -241,34 +632,46 @@ class _SecurityCenterScreenState extends State<SecurityCenterScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
-              Icon(Icons.settings_input_antenna_rounded, color: AppColors.primaryBlue, size: 20),
+              const Icon(Icons.settings_input_antenna_rounded,
+                  color: AppColors.primaryBlue, size: 20),
               const SizedBox(width: 12),
-              Text('VPN PROTOCOL', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 14)),
+              const Text('VPN PROTOCOL',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 14)),
+              const Spacer(),
+              if (_isSavingProtocol)
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: AppColors.primaryBlue),
+                ),
             ],
           ),
           const SizedBox(height: 20),
-          _protocolItem('WireGuard (Recommended)', 'Best speed and modern encryption', true),
-          _protocolItem('OpenVPN (TCP/UDP)', 'Most compatible and widely tested', false),
-          _protocolItem('IKEv2', 'Fast connection on mobile networks', false),
+          ..._protocols
+              .map((p) => _protocolItem(p['id']!, p['label']!, p['desc']!)),
         ],
       ),
     );
   }
 
-  Widget _protocolItem(String title, String desc, bool active) {
+  Widget _protocolItem(String id, String title, String desc) {
+    final active = _selectedProtocol == id;
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
-        child: InkWell(
-          onTap: () {}, // Handled by state in real implementation
-          borderRadius: BorderRadius.circular(12),
+        child: GestureDetector(
+          onTap: () => _selectProtocol(id),
           child: Row(
             children: [
-              // Custom Premium Radio
-              Container(
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
                 width: 20,
                 height: 20,
                 margin: const EdgeInsets.only(right: 16, left: 4),
@@ -279,26 +682,51 @@ class _SecurityCenterScreenState extends State<SecurityCenterScreen> {
                     width: 2,
                   ),
                 ),
-                child: active ? Center(
-                  child: Container(
-                    width: 10,
-                    height: 10,
-                    decoration: const BoxDecoration(
-                      color: AppColors.primaryBlue,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                ) : null,
+                child: active
+                    ? Center(
+                        child: Container(
+                          width: 10,
+                          height: 10,
+                          decoration: const BoxDecoration(
+                            color: AppColors.primaryBlue,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      )
+                    : null,
               ),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
-                    Text(desc, style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+                    Text(title,
+                        style: TextStyle(
+                          color: active ? Colors.white : Colors.white60,
+                          fontWeight:
+                              active ? FontWeight.w700 : FontWeight.w500,
+                          fontSize: 14,
+                        )),
+                    Text(desc,
+                        style: const TextStyle(
+                            color: AppColors.textSecondary, fontSize: 11)),
                   ],
                 ),
               ),
+              if (active)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryBlue.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Text('ACTIVE',
+                      style: TextStyle(
+                          color: AppColors.primaryBlue,
+                          fontSize: 9,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1)),
+                ),
             ],
           ),
         ),

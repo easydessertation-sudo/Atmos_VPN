@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../utils/design_system.dart';
 import '../main.dart';
 import '../widgets/upgrade_banner.dart';
+import '../utils/ad_manager.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MOBILE HOME SCREEN — mode-based VPN dashboard
@@ -23,10 +24,14 @@ class _ModeOption {
 }
 
 const _modes = [
-  _ModeOption('standard', 'Generic VPN', 'Secure everyday browsing', Icons.shield_rounded, Color(0xFF3B82F6)),
-  _ModeOption('streaming', 'Streaming', 'Netflix, Disney+, Hulu', Icons.movie_rounded, Color(0xFF8B5CF6)),
-  _ModeOption('gaming', 'Gaming', 'Low latency + DDoS shield', Icons.sports_esports_rounded, Color(0xFFF97316)),
-  _ModeOption('crypto', 'Crypto', 'Secure trading + phishing guard', Icons.currency_bitcoin_rounded, Color(0xFFF59E0B)),
+  _ModeOption('standard', 'Generic VPN', 'Secure everyday browsing',
+      Icons.shield_rounded, Color(0xFF3B82F6)),
+  _ModeOption('streaming', 'Streaming', 'Netflix, Disney+, Hulu',
+      Icons.movie_rounded, Color(0xFF8B5CF6)),
+  _ModeOption('gaming', 'Gaming', 'Low latency + DDoS shield',
+      Icons.sports_esports_rounded, Color(0xFFF97316)),
+  _ModeOption('crypto', 'Crypto', 'Secure trading + phishing guard',
+      Icons.currency_bitcoin_rounded, Color(0xFFF59E0B)),
 ];
 
 class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
@@ -34,40 +39,76 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   int _navIndex = 0;
   late AnimationController _pulseCtrl;
 
+  Map<String, dynamic> _securityFeatures = {};
+  bool _isFetchingSecurity = true;
+
+  bool _isSessionDialogShowing = false;
+
+  VPNProvider? _vpnProvider;
+
+  void _onVpnChanged() {
+    if (!mounted) return;
+    final vpn = _vpnProvider;
+    if (vpn != null &&
+        vpn.isFreeUser &&
+        vpn.remainingSeconds <= 0 &&
+        !vpn.isConnected) {
+      if (!_isSessionDialogShowing) {
+        _showSessionExpiredDialog();
+      }
+    }
+  }
+
   @override
   void initState() {
     super.initState();
-    _pulseCtrl = AnimationController(vsync: this, duration: const Duration(seconds: 2))
-      ..repeat(reverse: true);
-    // Listen for session expiry after first frame
+    _fetchSecuritySettings();
+    _pulseCtrl =
+        AnimationController(vsync: this, duration: const Duration(seconds: 2))
+          ..repeat(reverse: true);
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final vpn = context.read<VPNProvider>();
-      vpn.addListener(() {
-        if (mounted && vpn.isFreeUser && vpn.remainingSeconds == 0 && !vpn.isConnected) {
-          _showSessionExpiredDialog();
-        }
-      });
+      if (mounted) {
+        _vpnProvider = context.read<VPNProvider>();
+        _vpnProvider?.addListener(_onVpnChanged);
+      }
     });
   }
 
+  Future<void> _fetchSecuritySettings() async {
+    // Moved to VPNProvider. fetchSecuritySettings() is called on init there.
+  }
+
+  Future<void> _toggleSecurity(String key, bool value) async {
+    context.read<VPNProvider>().toggleSecurityFeature(key, value);
+  }
+
   Future<void> _showSessionExpiredDialog() async {
-    if (!mounted) return;
+    if (!mounted || _isSessionDialogShowing) return;
+    _isSessionDialogShowing = true;
+
     await showDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.cardBackground,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: const Text('⏰ Session Expired', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900)),
-        content: const Text('Your free 45-minute session has ended. Watch an ad to get 30 more minutes, or upgrade for unlimited access.',
+        title: const Text('⏰ Session Expired',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900)),
+        content: const Text(
+            'Your free 45-minute session has ended. Watch an ad to get 45 more minutes, or upgrade for unlimited access.',
             style: TextStyle(color: AppColors.textSecondary)),
         actions: [
           TextButton(
             onPressed: () {
               Navigator.pop(ctx);
-              context.read<VPNProvider>().watchAd();
+              AdManager.showInterstitialAd(onAdDismissed: () {
+                context.read<VPNProvider>().watchAd();
+              });
             },
-            child: const Text('WATCH AD (+30 min)', style: TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.bold)),
+            child: const Text('WATCH AD (+45 min)',
+                style: TextStyle(
+                    color: AppColors.primaryBlue, fontWeight: FontWeight.bold)),
           ),
           ElevatedButton(
             onPressed: () {
@@ -76,17 +117,25 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primaryBlue,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
             ),
-            child: const Text('UPGRADE', style: TextStyle(fontWeight: FontWeight.bold)),
+            child: const Text('UPGRADE',
+                style: TextStyle(fontWeight: FontWeight.bold)),
           ),
         ],
       ),
     );
+
+    if (mounted) {
+      _isSessionDialogShowing = false;
+    }
   }
 
   @override
   void dispose() {
+    _vpnProvider?.removeListener(_onVpnChanged);
     _pulseCtrl.dispose();
     super.dispose();
   }
@@ -129,13 +178,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         const SizedBox(height: 16),
                         _buildStatsRow(vpn),
                         const SizedBox(height: 16),
-                        _buildQuickFeatures(),
+                        _buildQuickFeatures(vpn),
                         if (vpn.isFreeUser && !vpn.hasUpgraded) ...[
                           const SizedBox(height: 32),
                           UpgradeBanner(
-                            onUpgrade: () => Navigator.pushNamed(context, '/account/pricing'),
+                            onUpgrade: () => Navigator.pushNamed(
+                                context, '/account/pricing'),
                             onWatchAd: () {
-                              vpn.watchAd();
+                              AdManager.showInterstitialAd(onAdDismissed: () {
+                                vpn.watchAd();
+                              });
                             },
                             onClose: () => vpn.setUpgrade(true),
                           ),
@@ -156,50 +208,120 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   Widget _buildTopBar(VPNProvider vpn) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
       child: Row(
         children: [
-          // Logo
+          // ── Left: Logo + Title ────────────────────────────────────────────
           ShaderMask(
-            shaderCallback: (b) => LinearGradient(colors: [_activeColor, _activeColor.withValues(alpha: 0.6)]).createShader(b),
-            child: const Icon(Icons.shield_rounded, size: 28, color: Colors.white),
+            shaderCallback: (b) => LinearGradient(
+                    colors: [_activeColor, _activeColor.withValues(alpha: 0.6)])
+                .createShader(b),
+            child:
+                const Icon(Icons.shield_rounded, size: 24, color: Colors.white),
           ),
-          const SizedBox(width: 8),
-          const Text('SecureVPN', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: Colors.white)),
-          const Spacer(),
-          // Free user timer badge
-          if (vpn.isFreeUser)
+          const SizedBox(width: 6),
+          const Text(
+            'Atmos VPN',
+            style: TextStyle(
+              fontWeight: FontWeight.w900,
+              fontSize: 16,
+              color: Colors.white,
+            ),
+          ),
+
+          // ── Middle: Eats all remaining space ─────────────────────────────
+          const Expanded(child: SizedBox()),
+
+          // ── Right: Timer + Notification + Profile ─────────────────────────
+          // Timer badge — only shows when user is free
+          if (vpn.isFreeUser) ...[
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: AppColors.warning.withValues(alpha: 0.15),
+                color: vpn.remainingSeconds <= 0
+                    ? AppColors.warning.withValues(alpha: 0.25)
+                    : AppColors.warning.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
+                border: Border.all(
+                  color: AppColors.warning.withValues(alpha: 0.4),
+                ),
               ),
               child: Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.timer_outlined, color: AppColors.warning, size: 12),
-                  const SizedBox(width: 4),
+                  const Icon(Icons.timer_outlined,
+                      color: AppColors.warning, size: 11),
+                  const SizedBox(width: 3),
                   Text(
-                    '${(vpn.remainingSeconds ~/ 60).toString().padLeft(2, '0')}:${(vpn.remainingSeconds % 60).toString().padLeft(2, '0')} free',
-                    style: const TextStyle(color: AppColors.warning, fontSize: 11, fontWeight: FontWeight.w800),
+                    vpn.remainingSeconds <= 0
+                        ? 'No time'
+                        : '${(vpn.remainingSeconds ~/ 60).toString().padLeft(2, '0')}:${(vpn.remainingSeconds % 60).toString().padLeft(2, '0')}',
+                    style: const TextStyle(
+                      color: AppColors.warning,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ],
               ),
             ),
-          const SizedBox(width: 12),
-          MouseRegion(
-            cursor: SystemMouseCursors.click,
-            child: GestureDetector(
-              onTap: () => Navigator.pushNamed(context, '/account'),
-              child: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.08),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.person_rounded, color: Colors.white60, size: 20),
+            const SizedBox(width: 8),
+          ],
+
+          // Notifications icon
+          GestureDetector(
+            onTap: () => Navigator.pushNamed(context, '/notifications'),
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.08),
+                shape: BoxShape.circle,
               ),
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  const Icon(Icons.notifications_none_rounded,
+                      color: Colors.white60, size: 20),
+                  if (vpn.unreadCount > 0)
+                    Positioned(
+                      right: -2,
+                      top: -2,
+                      child: Container(
+                        width: 14,
+                        height: 14,
+                        decoration: const BoxDecoration(
+                          color: AppColors.warning,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Center(
+                          child: Text(
+                            vpn.unreadCount > 9 ? '9+' : '${vpn.unreadCount}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 7,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+
+          // Profile icon
+          GestureDetector(
+            onTap: () => Navigator.pushNamed(context, '/account'),
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.08),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.person_rounded,
+                  color: Colors.white60, size: 20),
             ),
           ),
         ],
@@ -223,24 +345,32 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               onTap: () => setState(() => _selectedMode = i),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 decoration: BoxDecoration(
-                  color: selected ? mode.color.withValues(alpha: 0.2) : Colors.white.withValues(alpha: 0.05),
+                  color: selected
+                      ? mode.color.withValues(alpha: 0.2)
+                      : Colors.white.withValues(alpha: 0.05),
                   borderRadius: BorderRadius.circular(25),
                   border: Border.all(
-                    color: selected ? mode.color.withValues(alpha: 0.6) : Colors.white.withValues(alpha: 0.08),
+                    color: selected
+                        ? mode.color.withValues(alpha: 0.6)
+                        : Colors.white.withValues(alpha: 0.08),
                     width: selected ? 1.5 : 1,
                   ),
                 ),
                 child: Row(
                   children: [
-                    Icon(mode.icon, color: selected ? mode.color : Colors.white38, size: 16),
+                    Icon(mode.icon,
+                        color: selected ? mode.color : Colors.white38,
+                        size: 16),
                     const SizedBox(width: 6),
                     Text(
                       mode.name,
                       style: TextStyle(
                         color: selected ? mode.color : Colors.white38,
-                        fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
+                        fontWeight:
+                            selected ? FontWeight.w800 : FontWeight.w500,
                         fontSize: 13,
                       ),
                     ),
@@ -255,16 +385,34 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildConnectArea(VPNProvider vpn) {
+    final isConnecting = !vpn.isConnected &&
+        (vpn.status == 'Provisioning...' ||
+            vpn.status == 'Configuring...' ||
+            vpn.status == 'Connecting...');
+    final hasFailed = vpn.lastError != null && !vpn.isConnected;
+
     return Column(
       children: [
-        // Status
+        // Status label
         AnimatedSwitcher(
           duration: const Duration(milliseconds: 300),
           child: Text(
-            vpn.isConnected ? 'PROTECTED' : 'UNPROTECTED',
-            key: ValueKey(vpn.isConnected),
+            vpn.isConnected
+                ? 'PROTECTED'
+                : isConnecting
+                    ? vpn.status.toUpperCase()
+                    : hasFailed
+                        ? 'FAILED'
+                        : 'UNPROTECTED',
+            key: ValueKey(vpn.status),
             style: TextStyle(
-              color: vpn.isConnected ? AppColors.success : Colors.white38,
+              color: vpn.isConnected
+                  ? AppColors.success
+                  : isConnecting
+                      ? _activeColor
+                      : hasFailed
+                          ? AppColors.warning
+                          : Colors.white38,
               fontWeight: FontWeight.w900,
               fontSize: 11,
               letterSpacing: 2,
@@ -274,20 +422,34 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         const SizedBox(height: 8),
         Text(
           vpn.isConnected ? vpn.currentServer : 'IP Hidden',
-          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 22),
+          style: const TextStyle(
+              color: Colors.white, fontWeight: FontWeight.w900, fontSize: 22),
         ),
+        // Error message
+        if (hasFailed) ...[
+          const SizedBox(height: 8),
+          Text(
+            vpn.lastError!,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: AppColors.warning, fontSize: 12),
+          ),
+        ],
         const SizedBox(height: 32),
         // Big connect button
         AnimatedBuilder(
           animation: _pulseCtrl,
           builder: (_, child) {
-            final scale = vpn.isConnected ? 1.0 : (0.97 + 0.03 * _pulseCtrl.value);
+            final scale = (vpn.isConnected || isConnecting)
+                ? 1.0
+                : (0.97 + 0.03 * _pulseCtrl.value);
             return Transform.scale(scale: scale, child: child);
           },
           child: MouseRegion(
-            cursor: SystemMouseCursors.click,
+            cursor: isConnecting
+                ? SystemMouseCursors.basic
+                : SystemMouseCursors.click,
             child: GestureDetector(
-              onTap: () => vpn.toggleConnection(),
+              onTap: isConnecting ? null : () => vpn.toggleConnection(),
               child: Container(
                 width: 180,
                 height: 180,
@@ -295,14 +457,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: _activeColor.withValues(alpha: vpn.isConnected ? 0.4 : 0.2),
+                      color: _activeColor.withValues(
+                          alpha: vpn.isConnected ? 0.4 : 0.2),
                       blurRadius: vpn.isConnected ? 50 : 30,
                       spreadRadius: vpn.isConnected ? 5 : 0,
                     ),
                   ],
                 ),
                 child: CustomPaint(
-                  painter: _RingPainter(_activeColor, vpn.isConnected, _pulseCtrl.value),
+                  painter: _RingPainter(
+                      _activeColor, vpn.isConnected, _pulseCtrl.value),
                   child: Center(
                     child: Container(
                       width: 140,
@@ -311,30 +475,58 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         shape: BoxShape.circle,
                         gradient: RadialGradient(
                           colors: vpn.isConnected
-                              ? [AppColors.success.withValues(alpha: 0.3), Colors.transparent]
-                              : [_activeColor.withValues(alpha: 0.1), Colors.transparent],
+                              ? [
+                                  AppColors.success.withValues(alpha: 0.3),
+                                  Colors.transparent
+                                ]
+                              : [
+                                  _activeColor.withValues(alpha: 0.1),
+                                  Colors.transparent
+                                ],
                         ),
                         border: Border.all(
-                          color: vpn.isConnected ? AppColors.success.withValues(alpha: 0.5) : _activeColor.withValues(alpha: 0.4),
+                          color: vpn.isConnected
+                              ? AppColors.success.withValues(alpha: 0.5)
+                              : _activeColor.withValues(alpha: 0.4),
                           width: 1.5,
                         ),
                       ),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(
-                            vpn.isConnected ? Icons.power_settings_new_rounded : Icons.shield_rounded,
-                            size: 48,
-                            color: vpn.isConnected ? AppColors.success : _activeColor,
-                          ),
+                          if (isConnecting)
+                            SizedBox(
+                              width: 40,
+                              height: 40,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 3,
+                                color: _activeColor,
+                              ),
+                            )
+                          else
+                            Icon(
+                              vpn.isConnected
+                                  ? Icons.power_settings_new_rounded
+                                  : Icons.shield_rounded,
+                              size: 48,
+                              color: vpn.isConnected
+                                  ? AppColors.success
+                                  : _activeColor,
+                            ),
                           const SizedBox(height: 8),
                           Text(
-                            vpn.isConnected ? 'STOP' : 'CONNECT',
+                            vpn.isConnected
+                                ? 'STOP'
+                                : isConnecting
+                                    ? '...'
+                                    : 'CONNECT',
                             style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w900,
                               letterSpacing: 2,
-                              color: vpn.isConnected ? AppColors.success : _activeColor,
+                              color: vpn.isConnected
+                                  ? AppColors.success
+                                  : _activeColor,
                             ),
                           ),
                         ],
@@ -349,13 +541,26 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         const SizedBox(height: 12),
         Text(
           _modes[_selectedMode].desc,
-          style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 13),
+          style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.4), fontSize: 13),
         ),
       ],
     );
   }
 
   Widget _buildServerCard(VPNProvider vpn) {
+    final server = vpn.selectedServer;
+    final flag = server?['flag'] ?? '🌍';
+    final ping = (server?['ping_ms'] ?? 0) as int;
+    final pingColor = ping == 0
+        ? AppColors.textSecondary
+        : (ping < 50
+            ? AppColors.success
+            : (ping < 100 ? Colors.amber : AppColors.warning));
+    final serverName = server != null
+        ? '${server['city'] ?? server['name']}, ${server['country'] ?? ''}'
+        : (vpn.isConnected ? vpn.currentServer : 'Auto — Best Available');
+
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
@@ -375,28 +580,46 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   color: _activeColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Text('🇬🇧', style: TextStyle(fontSize: 20)),
+                child: Text(flag, style: const TextStyle(fontSize: 20)),
               ),
               const SizedBox(width: 14),
               Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Text('Server', style: TextStyle(color: AppColors.textSecondary, fontSize: 11, fontWeight: FontWeight.w700)),
-                  Text(
-                    vpn.isConnected ? vpn.currentServer : 'Auto — Best Available',
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15),
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Server',
+                          style: TextStyle(
+                              color: AppColors.textSecondary,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700)),
+                      Text(
+                        serverName,
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 15),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ]),
+              ),
+              if (server != null) ...[
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: pingColor.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(20),
                   ),
-                ]),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: AppColors.success.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(20),
+                  child: Text('${ping}ms',
+                      style: TextStyle(
+                          color: pingColor,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800)),
                 ),
-                child: const Text('18ms', style: TextStyle(color: AppColors.success, fontSize: 11, fontWeight: FontWeight.w800)),
-              ),
-              const SizedBox(width: 8),
-              const Icon(Icons.chevron_right_rounded, color: Colors.white24, size: 20),
+                const SizedBox(width: 8),
+              ],
+              const Icon(Icons.chevron_right_rounded,
+                  color: Colors.white24, size: 20),
             ],
           ),
         ),
@@ -405,27 +628,49 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildStatsRow(VPNProvider vpn) {
+    final server = vpn.selectedServer;
+    final ping = server != null ? '${server['ping_ms'] ?? '--'}ms' : '--';
+    final load = server != null ? '${server['load_pct'] ?? '--'}%' : '--';
+    final connected = vpn.isConnected;
     return Row(
       children: [
-        Expanded(child: _StatPill(Icons.arrow_downward_rounded, '48.9 MB/s', 'Download', AppColors.success)),
+        Expanded(
+            child: _StatPill(
+                Icons.timer_rounded, ping, 'Ping', AppColors.success)),
         const SizedBox(width: 10),
-        Expanded(child: _StatPill(Icons.arrow_upward_rounded, '2.4 MB/s', 'Upload', _activeColor)),
+        Expanded(
+            child: _StatPill(Icons.speed_rounded, connected ? load : '--',
+                'Server Load', _activeColor)),
         const SizedBox(width: 10),
-        Expanded(child: _StatPill(Icons.timer_rounded, '12 ms', 'Ping', AppColors.accentPurple)),
+        Expanded(
+            child: _StatPill(
+                Icons.shield_rounded,
+                connected ? 'ON' : 'OFF',
+                'Protected',
+                connected ? AppColors.success : AppColors.textSecondary)),
       ],
     );
   }
 
-  Widget _buildQuickFeatures() {
+  Widget _buildQuickFeatures(VPNProvider vpn) {
     return Column(
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text('QUICK SECURITY', style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 1.2)),
+            const Text('QUICK SECURITY',
+                style: TextStyle(
+                    color: AppColors.textSecondary,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 11,
+                    letterSpacing: 1.2)),
             TextButton(
               onPressed: () => Navigator.pushNamed(context, '/security'),
-              child: const Text('MANAGE ALL', style: TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.w900, fontSize: 11)),
+              child: const Text('MANAGE ALL',
+                  style: TextStyle(
+                      color: AppColors.primaryBlue,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 11)),
             ),
           ],
         ),
@@ -436,20 +681,45 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             borderRadius: BorderRadius.circular(18),
             border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
           ),
-          child: Column(
-            children: [
-              _QuickToggle('Kill Switch', Icons.power_off_rounded, true, _activeColor),
-              const SizedBox(height: 4),
-              _QuickToggle('DNS Leak Guard', Icons.dns_rounded, true, _activeColor),
-              const SizedBox(height: 4),
-              _QuickToggle('Ad Blocker', Icons.block_rounded, false, _activeColor),
-            ],
-          ),
+          child: vpn.isFetchingSecurity
+              ? const Padding(
+                  padding: EdgeInsets.all(20),
+                  child: Center(
+                    child: SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+                )
+              : Column(
+                  children: [
+                    _QuickToggle(
+                        'Kill Switch',
+                        Icons.power_off_rounded,
+                        vpn.securityFeatures['kill_switch_enabled'] == true,
+                        _activeColor,
+                        (v) => _toggleSecurity('kill_switch_enabled', v)),
+                    const SizedBox(height: 4),
+                    _QuickToggle(
+                        'DNS Leak Guard',
+                        Icons.dns_rounded,
+                        vpn.securityFeatures['dns_leak_protection'] == true,
+                        _activeColor,
+                        (v) => _toggleSecurity('dns_leak_protection', v)),
+                    const SizedBox(height: 4),
+                    _QuickToggle(
+                        'Ad Blocker',
+                        Icons.block_rounded,
+                        vpn.securityFeatures['ad_blocker_enabled'] == true,
+                        _activeColor,
+                        (v) => _toggleSecurity('ad_blocker_enabled', v)),
+                  ],
+                ),
         ),
       ],
     );
   }
-
 
   Widget _buildBottomNav(BuildContext context) {
     final items = [
@@ -459,11 +729,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       (Icons.bar_chart_rounded, 'Activity'),
       (Icons.person_rounded, 'Profile'),
     ];
-    final routes = ['/dashboard', '/server-list', '/security', '/speed', '/account'];
+    final routes = [
+      '/dashboard',
+      '/server-list',
+      '/security',
+      '/speed',
+      '/account'
+    ];
     return Container(
       decoration: BoxDecoration(
         color: const Color(0xFF080C17),
-        border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.07))),
+        border: Border(
+            top: BorderSide(color: Colors.white.withValues(alpha: 0.07))),
       ),
       child: SafeArea(
         child: SizedBox(
@@ -487,14 +764,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(items[i].$1, color: active ? _activeColor : Colors.white24, size: 22),
+                        Icon(items[i].$1,
+                            color: active ? _activeColor : Colors.white24,
+                            size: 22),
                         const SizedBox(height: 3),
                         Text(
                           items[i].$2,
                           style: TextStyle(
                             color: active ? _activeColor : Colors.white24,
                             fontSize: 9,
-                            fontWeight: active ? FontWeight.w800 : FontWeight.w500,
+                            fontWeight:
+                                active ? FontWeight.w800 : FontWeight.w500,
                           ),
                         ),
                       ],
@@ -533,34 +813,30 @@ class _StatPill extends StatelessWidget {
         children: [
           Icon(icon, color: color, size: 16),
           const SizedBox(height: 6),
-          Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13)),
+          Text(value,
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 13)),
           const SizedBox(height: 2),
-          Text(label, style: const TextStyle(color: AppColors.textSecondary, fontSize: 10)),
+          Text(label,
+              style: const TextStyle(
+                  color: AppColors.textSecondary, fontSize: 10)),
         ],
       ),
     );
   }
 }
 
-class _QuickToggle extends StatefulWidget {
+class _QuickToggle extends StatelessWidget {
   final String label;
   final IconData icon;
-  final bool initialValue;
+  final bool value;
   final Color color;
-  const _QuickToggle(this.label, this.icon, this.initialValue, this.color);
+  final ValueChanged<bool> onChanged;
 
-  @override
-  State<_QuickToggle> createState() => _QuickToggleState();
-}
-
-class _QuickToggleState extends State<_QuickToggle> {
-  late bool _val;
-
-  @override
-  void initState() {
-    super.initState();
-    _val = widget.initialValue;
-  }
+  const _QuickToggle(
+      this.label, this.icon, this.value, this.color, this.onChanged);
 
   @override
   Widget build(BuildContext context) {
@@ -569,17 +845,19 @@ class _QuickToggleState extends State<_QuickToggle> {
         Container(
           padding: const EdgeInsets.all(6),
           decoration: BoxDecoration(
-            color: widget.color.withValues(alpha: 0.1),
+            color: color.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(8),
           ),
-          child: Icon(widget.icon, color: widget.color, size: 14),
+          child: Icon(icon, color: color, size: 14),
         ),
         const SizedBox(width: 12),
-        Expanded(child: Text(widget.label, style: const TextStyle(color: Colors.white70, fontSize: 14))),
+        Expanded(
+            child: Text(label,
+                style: const TextStyle(color: Colors.white70, fontSize: 14))),
         Switch(
-          value: _val,
-          onChanged: (v) => setState(() => _val = v),
-          activeThumbColor: widget.color,
+          value: value,
+          onChanged: onChanged,
+          activeThumbColor: color,
           materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
         ),
       ],
@@ -617,17 +895,22 @@ class _RingPainter extends CustomPainter {
     final r = size.width / 2;
 
     // Outer faint ring
-    canvas.drawCircle(c, r, Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1
-      ..color = color.withValues(alpha: 0.1));
+    canvas.drawCircle(
+        c,
+        r,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1
+          ..color = color.withValues(alpha: 0.1));
 
     // Active arc
     final paint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 3
       ..strokeCap = StrokeCap.round
-      ..color = connected ? AppColors.success.withValues(alpha: 0.8) : color.withValues(alpha: 0.6);
+      ..color = connected
+          ? AppColors.success.withValues(alpha: 0.8)
+          : color.withValues(alpha: 0.6);
 
     if (connected) {
       canvas.drawCircle(c, r - 1, paint);

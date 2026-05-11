@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import '../utils/design_system.dart';
 import '../utils/api_service.dart';
+import '../widgets/password_text_field.dart';
 import '../widgets/app_container.dart';
 import '../main.dart';
 
@@ -21,10 +23,33 @@ class _SignupScreenState extends State<SignupScreen> {
   String? _error;
 
   Future<void> _signup() async {
-    if (_nameController.text.isEmpty || _emailController.text.isEmpty || _passwordController.text.isEmpty) {
-      setState(() => _error = 'All fields are required');
+    final name = _nameController.text.trim();
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+
+    // --- Client-side validation ---
+    final emailRegex = RegExp(r'^[\w\-.+]+@[\w\-]+\.[a-zA-Z]{2,}$');
+    if (name.isEmpty) {
+      setState(() => _error = 'Please enter your name.');
       return;
     }
+    if (email.isEmpty) {
+      setState(() => _error = 'Please enter your email address.');
+      return;
+    }
+    if (!emailRegex.hasMatch(email)) {
+      setState(() => _error = 'Please enter a valid email address.');
+      return;
+    }
+    if (password.isEmpty) {
+      setState(() => _error = 'Please enter a password.');
+      return;
+    }
+    if (password.length < 8) {
+      setState(() => _error = 'Password must be at least 8 characters.');
+      return;
+    }
+    // --- End validation ---
 
     setState(() {
       _isLoading = true;
@@ -32,54 +57,104 @@ class _SignupScreenState extends State<SignupScreen> {
     });
 
     try {
-      final response = await ApiService.register(
-        _emailController.text.trim(),
-        _passwordController.text,
-        _nameController.text.trim(),
-      );
+      final response = await ApiService.register(email, password, name);
 
       if (response['success'] == true) {
         if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Row(
+                children: [
+                  Icon(Icons.check_circle_outline_rounded, color: Colors.white, size: 20),
+                  SizedBox(width: 12),
+                  Text('Account created! Welcome to Atmos VPN.', style: TextStyle(fontWeight: FontWeight.bold)),
+                ],
+              ),
+              backgroundColor: AppColors.success,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
           await context.read<VPNProvider>().fetchProfile();
           if (mounted) {
             Navigator.pushReplacementNamed(context, '/dashboard');
           }
         }
       } else {
-        setState(() => _error = response['message'] ?? 'Signup failed');
+        setState(() => _error = response['detail'] ?? response['message'] ?? 'Signup failed. Please try again.');
       }
     } catch (e) {
-      setState(() => _error = 'An error occurred. Check your connection.');
+      setState(() => _error = e.toString().replaceAll('Exception: ', ''));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
   Future<void> _handleSocialLogin(String provider) async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
-
-    await Future.delayed(const Duration(seconds: 1));
-
-    if (mounted) {
-      setState(() => _isLoading = false);
-      
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          backgroundColor: AppColors.cardBackground,
-          title: Text('Sign up with $provider', style: const TextStyle(color: Colors.white)),
-          content: Text('Simulating successful $provider authentication...', style: const TextStyle(color: AppColors.textSecondary)),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pushReplacementNamed(context, '/dashboard'),
-              child: const Text('CONTINUE', style: TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.bold)),
-            ),
-          ],
+    if (provider != 'Google') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Apple Sign In coming soon!'),
+          backgroundColor: Colors.black54,
+          behavior: SnackBarBehavior.floating,
         ),
       );
+      return;
+    }
+
+    setState(() { _isLoading = true; _error = null; });
+
+    try {
+      await GoogleSignIn.instance.initialize(
+        serverClientId: '755976865784-073d2g9qun1ae6eht8er591vge24gph7.apps.googleusercontent.com',
+      );
+      final account = await GoogleSignIn.instance.authenticate();
+      if (account == null) {
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      final idToken = account.authentication.idToken;
+
+      if (idToken == null) {
+        setState(() {
+          _isLoading = false;
+          _error = 'Google sign-up failed. Please try again.';
+        });
+        return;
+      }
+
+      final response = await ApiService.googleVerify(idToken);
+
+      if (response['success'] == true) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(Icons.check_circle_outline_rounded, color: Colors.white, size: 20),
+                  const SizedBox(width: 12),
+                  Text(
+                    response['data']['is_new_user'] == true
+                        ? 'Account created! Welcome to Atmos VPN.'
+                        : 'Welcome back, ${response['data']['user']['full_name'] ?? ''}!',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+              backgroundColor: AppColors.success,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+          await context.read<VPNProvider>().fetchProfile();
+          if (mounted) Navigator.pushReplacementNamed(context, '/dashboard');
+        }
+      } else {
+        setState(() => _error = response['message'] ?? 'Google sign-up failed. Please try again.');
+      }
+    } catch (e) {
+      setState(() => _error = 'Google sign-up failed: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -227,24 +302,11 @@ class _SignupScreenState extends State<SignupScreen> {
     required IconData icon,
     bool isPassword = false,
   }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.cardBackground,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.divider),
-      ),
-      child: TextField(
-        controller: controller,
-        obscureText: isPassword,
-        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-        decoration: InputDecoration(
-          labelText: label,
-          labelStyle: const TextStyle(color: AppColors.textSecondary),
-          prefixIcon: Icon(icon, color: AppColors.textSecondary),
-          border: InputBorder.none,
-          contentPadding: const EdgeInsets.all(20),
-        ),
-      ),
+    return PasswordTextField(
+      controller: controller,
+      label: label,
+      icon: icon,
+      isPassword: isPassword,
     );
   }
 

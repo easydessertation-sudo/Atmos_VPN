@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../main.dart';
+import '../utils/api_service.dart';
 import '../utils/design_system.dart';
 import '../widgets/app_container.dart';
 
@@ -12,10 +13,13 @@ class ServerListScreen extends StatefulWidget {
   State<ServerListScreen> createState() => _ServerListScreenState();
 }
 
-class _ServerListScreenState extends State<ServerListScreen> with SingleTickerProviderStateMixin {
+class _ServerListScreenState extends State<ServerListScreen>
+    with SingleTickerProviderStateMixin {
   late TabController _tabCtrl;
   String _search = '';
   final _searchCtrl = TextEditingController();
+  bool _isLoading = false;
+  String? _fetchError;
 
   final _tabs = ['All', 'Streaming', 'Gaming', 'Crypto', 'Pro'];
 
@@ -23,6 +27,29 @@ class _ServerListScreenState extends State<ServerListScreen> with SingleTickerPr
   void initState() {
     super.initState();
     _tabCtrl = TabController(length: _tabs.length, vsync: this);
+    _loadServers();
+  }
+
+  Future<void> _loadServers() async {
+    setState(() {
+      _isLoading = true;
+      _fetchError = null;
+    });
+    try {
+      final servers = await ApiService.getServers();
+      if (mounted) {
+        context.read<VPNProvider>().updateServers(servers);
+        setState(() => _isLoading = false);
+      }
+    } catch (e) {
+      print('SERVER LOAD ERROR: $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _fetchError = 'Error: $e';
+        });
+      }
+    }
   }
 
   @override
@@ -36,16 +63,35 @@ class _ServerListScreenState extends State<ServerListScreen> with SingleTickerPr
     final tabKey = tab.toLowerCase();
     return allServers.where((s) {
       final matchesSearch = _search.isEmpty ||
-          s['country'].toString().toLowerCase().contains(_search.toLowerCase()) ||
-          s['city'].toString().toLowerCase().contains(_search.toLowerCase()) ||
-          s['name'].toString().toLowerCase().contains(_search.toLowerCase());
-      
-      final matchesTab = tabKey == 'all'
-          ? true
-          : tabKey == 'pro'
-              ? s['plan'] == 'pro'
-              : s['types'] != null && (s['types'][tabKey] == true);
-      
+          (s['country']
+                  ?.toString()
+                  .toLowerCase()
+                  .contains(_search.toLowerCase()) ??
+              false) ||
+          (s['city']
+                  ?.toString()
+                  .toLowerCase()
+                  .contains(_search.toLowerCase()) ??
+              false) ||
+          (s['name']
+                  ?.toString()
+                  .toLowerCase()
+                  .contains(_search.toLowerCase()) ??
+              false);
+
+      bool matchesTab = false;
+      if (tabKey == 'all') {
+        matchesTab = true;
+      } else if (tabKey == 'pro') {
+        final types = s['types'] as Map? ?? {};
+        matchesTab = (types['streaming'] == true) ||
+            (types['gaming'] == true) ||
+            (types['crypto'] == true);
+      } else {
+        final types = s['types'] as Map? ?? {};
+        matchesTab = types[tabKey] == true;
+      }
+
       return matchesSearch && matchesTab;
     }).toList();
   }
@@ -65,10 +111,12 @@ class _ServerListScreenState extends State<ServerListScreen> with SingleTickerPr
                 child: Row(
                   children: [
                     IconButton(
-                      icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+                      icon: const Icon(Icons.arrow_back_rounded,
+                          color: Colors.white),
                       style: IconButton.styleFrom(
                         backgroundColor: AppColors.cardBackground,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
                       ),
                       onPressed: () => Navigator.pop(context),
                     ),
@@ -78,11 +126,16 @@ class _ServerListScreenState extends State<ServerListScreen> with SingleTickerPr
                       children: [
                         const Text(
                           'Select Server',
-                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 24, letterSpacing: -0.5),
+                          style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 24,
+                              letterSpacing: -0.5),
                         ),
                         Text(
                           '${provider.servers.length} locations available',
-                          style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                          style: TextStyle(
+                              color: AppColors.textSecondary, fontSize: 13),
                         ),
                       ],
                     ),
@@ -93,7 +146,8 @@ class _ServerListScreenState extends State<ServerListScreen> with SingleTickerPr
                         color: AppColors.primaryBlue.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: const Icon(Icons.map_outlined, color: AppColors.primaryBlue),
+                      child: const Icon(Icons.map_outlined,
+                          color: AppColors.primaryBlue),
                     ),
                   ],
                 ),
@@ -111,12 +165,14 @@ class _ServerListScreenState extends State<ServerListScreen> with SingleTickerPr
                 ),
                 child: TextField(
                   controller: _searchCtrl,
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                  style: const TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.w600),
                   onChanged: (v) => setState(() => _search = v),
                   decoration: const InputDecoration(
                     hintText: 'Search by country or city...',
                     hintStyle: TextStyle(color: AppColors.textSecondary),
-                    prefixIcon: Icon(Icons.search_rounded, color: AppColors.textSecondary),
+                    prefixIcon: Icon(Icons.search_rounded,
+                        color: AppColors.textSecondary),
                     border: InputBorder.none,
                     contentPadding: EdgeInsets.all(20),
                   ),
@@ -131,8 +187,10 @@ class _ServerListScreenState extends State<ServerListScreen> with SingleTickerPr
               tabAlignment: TabAlignment.start,
               labelPadding: const EdgeInsets.symmetric(horizontal: 24),
               indicatorSize: TabBarIndicatorSize.label,
-              labelStyle: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14),
-              unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+              labelStyle:
+                  const TextStyle(fontWeight: FontWeight.w900, fontSize: 14),
+              unselectedLabelStyle:
+                  const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
               labelColor: AppColors.primaryBlue,
               unselectedLabelColor: AppColors.textSecondary,
               indicatorColor: AppColors.primaryBlue,
@@ -144,35 +202,87 @@ class _ServerListScreenState extends State<ServerListScreen> with SingleTickerPr
 
             // Server List
             Expanded(
-              child: TabBarView(
-                controller: _tabCtrl,
-                children: _tabs.map((tab) {
-                  final list = _filtered(provider.servers, tab);
-                  if (list.isEmpty) {
-                    return Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.dns_rounded, color: AppColors.textSecondary.withValues(alpha: 0.2), size: 80),
-                          const SizedBox(height: 20),
-                          const Text('No servers matches your criteria', style: TextStyle(color: AppColors.textSecondary, fontSize: 16)),
-                        ],
-                      ),
-                    );
-                  }
-                  return ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: list.length,
-                    itemBuilder: (_, i) => _ServerCard(
-                      server: list[i],
-                      onConnect: () {
-                        provider.connect(list[i]['id'].toString());
-                        Navigator.pop(context);
-                      },
-                    ).animate().fadeIn(delay: (i * 50).ms).slideX(begin: 0.1, end: 0),
-                  );
-                }).toList(),
-              ),
+              child: _isLoading
+                  ? const Center(
+                      child: CircularProgressIndicator(
+                          color: AppColors.primaryBlue))
+                  : _fetchError != null
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.wifi_off_rounded,
+                                  color: AppColors.textSecondary
+                                      .withValues(alpha: 0.4),
+                                  size: 80),
+                              const SizedBox(height: 20),
+                              Text(_fetchError!,
+                                  style: const TextStyle(
+                                      color: AppColors.textSecondary,
+                                      fontSize: 16),
+                                  textAlign: TextAlign.center),
+                              const SizedBox(height: 24),
+                              ElevatedButton.icon(
+                                onPressed: _loadServers,
+                                icon: const Icon(Icons.refresh_rounded),
+                                label: const Text('Retry'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.primaryBlue,
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12)),
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      : TabBarView(
+                          controller: _tabCtrl,
+                          children: _tabs.map((tab) {
+                            final list = _filtered(provider.servers, tab);
+                            if (list.isEmpty) {
+                              return Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.dns_rounded,
+                                        color: AppColors.textSecondary
+                                            .withValues(alpha: 0.2),
+                                        size: 80),
+                                    const SizedBox(height: 20),
+                                    const Text('No servers match your criteria',
+                                        style: TextStyle(
+                                            color: AppColors.textSecondary,
+                                            fontSize: 16)),
+                                  ],
+                                ),
+                              );
+                            }
+                            return ListView.builder(
+                              padding: const EdgeInsets.all(16),
+                              itemCount: list.length,
+                              itemBuilder: (_, i) => _ServerCard(
+                                server: list[i],
+                                onConnect: () {
+                                  final server = list[i];
+                                  final types = (server['types'] as Map?) ?? {};
+                                  final isPro = types['streaming'] == true ||
+                                      types['gaming'] == true ||
+                                      types['crypto'] == true ||
+                                      types['p2p'] == true ||
+                                      types['dedicated_ip'] == true;
+
+                                  provider.setSelectedServer(Map<String, dynamic>.from(server));
+                                  provider.connect(server['id'].toString());
+                                  Navigator.pop(context);
+                                },
+                              )
+                                  .animate()
+                                  .fadeIn(delay: (i * 50).ms)
+                                  .slideX(begin: 0.1, end: 0),
+                            );
+                          }).toList(),
+                        ),
             ),
           ],
         ),
@@ -195,9 +305,17 @@ class _ServerCardState extends State<_ServerCard> {
 
   @override
   Widget build(BuildContext context) {
-    final isPro = widget.server['plan'] == 'pro';
+    final types = (widget.server['types'] as Map?) ?? {};
+    final isPro = types['streaming'] == true ||
+        types['gaming'] == true ||
+        types['crypto'] == true ||
+        types['p2p'] == true ||
+        types['dedicated_ip'] == true;
     final ping = widget.server['ping_ms'] ?? 0;
     
+    // We need to access provider to know if the user is free
+    final provider = Provider.of<VPNProvider>(context);
+
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _isHovered = true),
@@ -209,10 +327,14 @@ class _ServerCardState extends State<_ServerCard> {
           margin: const EdgeInsets.only(bottom: 12),
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: _isHovered ? AppColors.primaryBlue.withValues(alpha: 0.05) : AppColors.cardBackground,
+            color: _isHovered
+                ? AppColors.primaryBlue.withValues(alpha: 0.05)
+                : AppColors.cardBackground,
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: _isHovered ? AppColors.primaryBlue.withValues(alpha: 0.3) : AppColors.divider,
+              color: _isHovered
+                  ? AppColors.primaryBlue.withValues(alpha: 0.3)
+                  : AppColors.divider,
             ),
           ),
           child: Row(
@@ -226,11 +348,12 @@ class _ServerCardState extends State<_ServerCard> {
                   shape: BoxShape.circle,
                 ),
                 alignment: Alignment.center,
-                child: Text(widget.server['flag'] ?? '🏳️', style: const TextStyle(fontSize: 24)),
+                child: Text(widget.server['flag'] ?? '🏳️',
+                    style: const TextStyle(fontSize: 24)),
               ),
-              
+
               const SizedBox(width: 16),
-              
+
               // Details
               Expanded(
                 child: Column(
@@ -240,24 +363,34 @@ class _ServerCardState extends State<_ServerCard> {
                       children: [
                         Text(
                           widget.server['country'] ?? 'Unknown',
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16),
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 16),
                         ),
                         if (isPro) ...[
                           const SizedBox(width: 8),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
                               color: Colors.amber.withValues(alpha: 0.2),
                               borderRadius: BorderRadius.circular(6),
                             ),
-                            child: const Text('PRO', style: TextStyle(color: Colors.amber, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 0.5)),
+                            child: const Text('PRO',
+                                style: TextStyle(
+                                    color: Colors.amber,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 0.5)),
                           ),
                         ],
                       ],
                     ),
                     Text(
                       widget.server['city'] ?? 'Unknown',
-                      style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                      style: const TextStyle(
+                          color: AppColors.textSecondary, fontSize: 13),
                     ),
                   ],
                 ),
@@ -274,7 +407,9 @@ class _ServerCardState extends State<_ServerCard> {
                       Text(
                         '${ping}ms',
                         style: TextStyle(
-                          color: ping < 50 ? AppColors.success : (ping < 100 ? Colors.amber : AppColors.warning),
+                          color: ping < 50
+                              ? AppColors.success
+                              : (ping < 100 ? Colors.amber : AppColors.warning),
                           fontWeight: FontWeight.w800,
                           fontSize: 13,
                         ),
@@ -282,7 +417,12 @@ class _ServerCardState extends State<_ServerCard> {
                     ],
                   ),
                   const SizedBox(height: 4),
-                  const Icon(Icons.chevron_right_rounded, color: AppColors.textSecondary, size: 20),
+                  if (isPro && provider.isFreeUser)
+                    const Icon(Icons.lock_rounded,
+                        color: Colors.amber, size: 20)
+                  else
+                    const Icon(Icons.chevron_right_rounded,
+                        color: AppColors.textSecondary, size: 20),
                 ],
               ),
             ],
@@ -293,9 +433,11 @@ class _ServerCardState extends State<_ServerCard> {
   }
 
   Widget _buildSignalBars(int ping) {
-    Color color = ping < 50 ? AppColors.success : (ping < 100 ? Colors.amber : AppColors.warning);
+    Color color = ping < 50
+        ? AppColors.success
+        : (ping < 100 ? Colors.amber : AppColors.warning);
     int bars = ping < 50 ? 4 : (ping < 100 ? 3 : 2);
-    
+
     return Row(
       children: List.generate(4, (i) {
         return Container(
@@ -303,7 +445,9 @@ class _ServerCardState extends State<_ServerCard> {
           height: 6.0 + (i * 3),
           margin: const EdgeInsets.only(right: 2),
           decoration: BoxDecoration(
-            color: i < bars ? color : AppColors.textSecondary.withValues(alpha: 0.2),
+            color: i < bars
+                ? color
+                : AppColors.textSecondary.withValues(alpha: 0.2),
             borderRadius: BorderRadius.circular(2),
           ),
         );

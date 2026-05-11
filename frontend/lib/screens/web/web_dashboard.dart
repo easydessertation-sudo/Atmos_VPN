@@ -313,7 +313,7 @@ class _ModeSelectorCard extends StatelessWidget {
         children: [
           const Text('VPN Mode', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18)),
           const SizedBox(height: 8),
-          const Text('Choose how SecureVPN protects you', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+          const Text('Choose how Atmos VPN protects you', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
           const SizedBox(height: 20),
           ...modes.map((m) => _ModeRow(config: m, isSelected: selectedMode == m.id, onTap: () => onModeChanged(m.id))),
         ],

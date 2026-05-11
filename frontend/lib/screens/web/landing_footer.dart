@@ -183,7 +183,7 @@ class LandingFooter extends StatelessWidget {
           SizedBox(height: isMobile ? 16 : 24),
           if (isMobile)
             Column(children: [
-              Text('(c) 2026 SecureVPN Ltd. All rights reserved.',
+              Text('(c) 2026 Atmos VPN Ltd. All rights reserved.',
                   style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.25),
                       fontSize: 12)),
@@ -197,7 +197,7 @@ class LandingFooter extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('(c) 2026 SecureVPN Ltd. All rights reserved.',
+                Text('(c) 2026 Atmos VPN Ltd. All rights reserved.',
                     style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.25),
                         fontSize: 12)),
@@ -231,7 +231,7 @@ class _FooterBrand extends StatelessWidget {
               child: const Icon(Icons.shield_rounded,
                   color: Colors.white, size: 18)),
           const SizedBox(width: 10),
-          const Text('SecureVPN',
+          const Text('Atmos VPN',
               style: TextStyle(
                   fontWeight: FontWeight.w900,
                   fontSize: 20,

@@ -1,10 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/design_system.dart';
 import '../widgets/app_container.dart';
 
 class TrialOfferScreen extends StatelessWidget {
   const TrialOfferScreen({super.key});
+
+  Future<void> _navigateNext(BuildContext context) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('access_token');
+    if (context.mounted) {
+      if (token != null && token.isNotEmpty) {
+        Navigator.pushReplacementNamed(context, '/home');
+      } else {
+        Navigator.pushReplacementNamed(context, '/login');
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -19,15 +32,16 @@ class TrialOfferScreen extends StatelessWidget {
               right: 20,
               child: IconButton(
                 icon: const Icon(Icons.close_rounded, color: AppColors.textSecondary),
-                onPressed: () => Navigator.pushReplacementNamed(context, '/home'),
+                onPressed: () => _navigateNext(context),
               ),
             ),
 
-            Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
+            SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 60.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
                   const SizedBox(height: 40),
                   
                   // Title
@@ -73,12 +87,13 @@ class TrialOfferScreen extends StatelessWidget {
                   _buildBenefit(Icons.public_rounded, "90+ Global Servers"),
                   _buildBenefit(Icons.bolt_rounded, "Ultra-Fast Speed"),
 
-                  const Spacer(),
+                  const SizedBox(height: 40),
 
                   // Action Buttons
                   ElevatedButton(
                     onPressed: () {
                       // Trigger Trial Start
+                      _navigateNext(context);
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primaryBlue,
@@ -105,7 +120,7 @@ class TrialOfferScreen extends StatelessWidget {
                   const SizedBox(height: 24),
 
                   TextButton(
-                    onPressed: () => Navigator.pushReplacementNamed(context, '/home'),
+                    onPressed: () => _navigateNext(context),
                     child: const Text(
                       "Continue with free version",
                       style: TextStyle(color: AppColors.primaryBlue, decoration: TextDecoration.underline),
@@ -115,6 +130,7 @@ class TrialOfferScreen extends StatelessWidget {
                   const SizedBox(height: 20),
                 ],
               ),
+            ),
             ),
           ],
         ),

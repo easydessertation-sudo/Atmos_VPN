@@ -83,7 +83,7 @@ class _LogoHomeLink extends StatelessWidget {
             child: const Icon(Icons.shield_rounded, color: Colors.white, size: 18),
           ),
           const SizedBox(width: 10),
-          const Text('SecureVPN', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: Colors.white)),
+          const Text('Atmos VPN', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: Colors.white)),
         ]),
       ),
     );
@@ -269,7 +269,7 @@ class _FeaturesHero extends StatelessWidget {
             _BigFeatureCard(Icons.call_split_rounded, 'Split Tunneling', 'Route specific apps through the VPN while others use your regular connection. Full control at the app level.', AppColors.primaryBlue),
             _BigFeatureCard(Icons.dns_rounded, 'Secure DNS Resolver', 'All DNS queries route through our private encrypted resolver. No third-party DNS providers, no leaks.', AppColors.accentPurple),
             _BigFeatureCard(Icons.wifi_rounded, 'Auto WiFi Protect', 'Automatically connects to VPN on untrusted public WiFi networks — cafés, airports, hotels.', AppColors.success),
-            _BigFeatureCard(Icons.router_rounded, 'Router Support', 'Install SecureVPN directly on your router to protect every device in your home or office.', AppColors.warning),
+            _BigFeatureCard(Icons.router_rounded, 'Router Support', 'Install Atmos VPN directly on your router to protect every device in your home or office.', AppColors.warning),
           ],
         ),
       ]),
@@ -608,7 +608,7 @@ class _HowSteps extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final steps = [
-      ('1', 'You connect', 'You open the app and hit Connect. SecureVPN establishes an encrypted tunnel to one of our 6,500+ servers using your chosen protocol.', Icons.wifi_rounded),
+      ('1', 'You connect', 'You open the app and hit Connect. Atmos VPN establishes an encrypted tunnel to one of our 6,500+ servers using your chosen protocol.', Icons.wifi_rounded),
       ('2', 'Your traffic is encrypted', 'Every packet of data leaving your device is encrypted with AES-256 before it leaves. Not even your ISP can see what you\'re doing.', Icons.lock_rounded),
       ('3', 'Your IP is masked', 'To the rest of the internet, your requests appear to come from the VPN server\'s IP address — not your real location.', Icons.public_rounded),
       ('4', 'You browse freely', 'Access any content, in any country, with full privacy. The VPN server fetches content on your behalf and sends it back encrypted.', Icons.explore_rounded),
@@ -683,7 +683,7 @@ class _EncryptionExplainer extends StatelessWidget {
         _sectionHeader('AES-256 ENCRYPTION', 'Unbreakable. Literally.'),
         const SizedBox(height: 32),
         Text(
-          'AES-256 encryption has 2²⁵⁶ possible keys. If every atom in the observable universe were a computer running at maximum speed since the Big Bang, it still wouldn\'t have cracked a single key. That\'s how secure your data is with SecureVPN.',
+          'AES-256 encryption has 2²⁵⁶ possible keys. If every atom in the observable universe were a computer running at maximum speed since the Big Bang, it still wouldn\'t have cracked a single key. That\'s how secure your data is with Atmos VPN.',
           textAlign: TextAlign.center,
           style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 16, height: 1.8),
         ),
@@ -720,7 +720,7 @@ class _UseCases extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 80, horizontal: 60),
       child: Column(children: [
-        _sectionHeader('USE CASES', 'Why people use SecureVPN.'),
+        _sectionHeader('USE CASES', 'Why people use Atmos VPN.'),
         const SizedBox(height: 48),
         Wrap(spacing: 24, runSpacing: 24, alignment: WrapAlignment.center, children: [
           _UseCase(Icons.movie_rounded, 'Streaming', 'Unlock Netflix US, BBC iPlayer, Disney+ and 50+ streaming services from anywhere in the world.', const Color(0xFF8B5CF6)),
@@ -798,20 +798,20 @@ class _AboutMobile extends StatelessWidget {
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(vertical: 60, horizontal: 20),
       child: Column(children: [
-        _sectionHeader('ABOUT SECUREVPN', 'Built by privacy advocates.\nFor everyone.', 'SecureVPN was founded in 2024 by a team of cybersecurity engineers, ex-intelligence analysts, and privacy advocates. We believe internet privacy is a fundamental right — not a luxury.'),
+        _sectionHeader('ABOUT ATMOS VPN', 'Built by privacy advocates.\nFor everyone.', 'Atmos VPN was founded in 2024 by a team of cybersecurity engineers, ex-intelligence analysts, and privacy advocates. We believe internet privacy is a fundamental right — not a luxury.'),
         const SizedBox(height: 48),
         Column(children: [
           _ValueCard(Icons.verified_user_rounded, 'Our Mission', 'Make enterprise-grade privacy accessible and affordable for everyone on Earth.', AppColors.primaryBlue, isMobile: true),
           const SizedBox(height: 16),
           _ValueCard(Icons.visibility_off_rounded, 'Our Values', 'Transparency, privacy, and security guide every decision we make — from code to policy.', AppColors.accentPurple, isMobile: true),
           const SizedBox(height: 16),
-          _ValueCard(Icons.public_rounded, 'Our Reach', '14 million users across 180 countries trust SecureVPN to protect their digital lives.', AppColors.success, isMobile: true),
+          _ValueCard(Icons.public_rounded, 'Our Reach', '14 million users across 180 countries trust Atmos VPN to protect their digital lives.', AppColors.success, isMobile: true),
         ]),
         const SizedBox(height: 48),
         _sectionHeader('OUR STORY', 'From a small team to\n14 million users.'),
         const SizedBox(height: 32),
         Text(
-          'SecureVPN was born from frustration. Our founders — a group of security engineers who spent years working in enterprise cybersecurity — watched as consumer VPN products consistently failed to meet the security standards of professional tools.\n\nWe decided to build the VPN we always wanted: one that combines the security rigour of enterprise tools with the simplicity of a consumer app. No compromises. No dark patterns. No data selling.\n\nToday, SecureVPN protects journalists in authoritarian regimes, activists in conflict zones, gamers who want fair competition, and everyday people who simply want their privacy back.',
+          'Atmos VPN was born from frustration. Our founders — a group of security engineers who spent years working in enterprise cybersecurity — watched as consumer VPN products consistently failed to meet the security standards of professional tools.\n\nWe decided to build the VPN we always wanted: one that combines the security rigour of enterprise tools with the simplicity of a consumer app. No compromises. No dark patterns. No data selling.\n\nToday, Atmos VPN protects journalists in authoritarian regimes, activists in conflict zones, gamers who want fair competition, and everyday people who simply want their privacy back.',
           textAlign: TextAlign.center,
           style: TextStyle(color: Colors.white.withValues(alpha: 0.55), fontSize: 15, height: 1.8),
         ),
@@ -828,14 +828,14 @@ class _AboutTablet extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 80, horizontal: 40),
       child: Column(children: [
-        _sectionHeader('ABOUT SECUREVPN', 'Built by privacy advocates.\nFor everyone.', 'SecureVPN was founded in 2024 by a team of cybersecurity engineers, ex-intelligence analysts, and privacy advocates. We believe internet privacy is a fundamental right — not a luxury.'),
+        _sectionHeader('ABOUT ATMOS VPN', 'Built by privacy advocates.\nFor everyone.', 'Atmos VPN was founded in 2024 by a team of cybersecurity engineers, ex-intelligence analysts, and privacy advocates. We believe internet privacy is a fundamental right — not a luxury.'),
         const SizedBox(height: 56),
         Row(children: [
           Expanded(child: _ValueCard(Icons.verified_user_rounded, 'Our Mission', 'Make enterprise-grade privacy accessible and affordable for everyone on Earth.', AppColors.primaryBlue)),
           const SizedBox(width: 20),
           Expanded(child: _ValueCard(Icons.visibility_off_rounded, 'Our Values', 'Transparency, privacy, and security guide every decision we make — from code to policy.', AppColors.accentPurple)),
           const SizedBox(width: 20),
-          Expanded(child: _ValueCard(Icons.public_rounded, 'Our Reach', '14 million users across 180 countries trust SecureVPN to protect their digital lives.', AppColors.success)),
+          Expanded(child: _ValueCard(Icons.public_rounded, 'Our Reach', '14 million users across 180 countries trust Atmos VPN to protect their digital lives.', AppColors.success)),
         ]),
         const SizedBox(height: 56),
         _sectionHeader('OUR STORY', 'From a small team to\n14 million users.'),
@@ -843,7 +843,7 @@ class _AboutTablet extends StatelessWidget {
         Container(
           constraints: const BoxConstraints(maxWidth: 800),
           child: Text(
-            'SecureVPN was born from frustration. Our founders — a group of security engineers who spent years working in enterprise cybersecurity — watched as consumer VPN products consistently failed to meet the security standards of professional tools.\n\nWe decided to build the VPN we always wanted: one that combines the security rigour of enterprise tools with the simplicity of a consumer app. No compromises. No dark patterns. No data selling.\n\nToday, SecureVPN protects journalists in authoritarian regimes, activists in conflict zones, gamers who want fair competition, and everyday people who simply want their privacy back.',
+            'Atmos VPN was born from frustration. Our founders — a group of security engineers who spent years working in enterprise cybersecurity — watched as consumer VPN products consistently failed to meet the security standards of professional tools.\n\nWe decided to build the VPN we always wanted: one that combines the security rigour of enterprise tools with the simplicity of a consumer app. No compromises. No dark patterns. No data selling.\n\nToday, Atmos VPN protects journalists in authoritarian regimes, activists in conflict zones, gamers who want fair competition, and everyday people who simply want their privacy back.',
             textAlign: TextAlign.center,
             style: TextStyle(color: Colors.white.withValues(alpha: 0.55), fontSize: 16, height: 1.9),
           ),
@@ -861,14 +861,14 @@ class _AboutDesktop extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 100, horizontal: 60),
       child: Column(children: [
-        _sectionHeader('ABOUT SECUREVPN', 'Built by privacy advocates.\nFor everyone.', 'SecureVPN was founded in 2024 by a team of cybersecurity engineers, ex-intelligence analysts, and privacy advocates. We believe internet privacy is a fundamental right — not a luxury.'),
+        _sectionHeader('ABOUT ATMOS VPN', 'Built by privacy advocates.\nFor everyone.', 'Atmos VPN was founded in 2024 by a team of cybersecurity engineers, ex-intelligence analysts, and privacy advocates. We believe internet privacy is a fundamental right — not a luxury.'),
         const SizedBox(height: 72),
         Row(children: [
           Expanded(child: _ValueCard(Icons.verified_user_rounded, 'Our Mission', 'Make enterprise-grade privacy accessible and affordable for everyone on Earth.', AppColors.primaryBlue)),
           const SizedBox(width: 24),
           Expanded(child: _ValueCard(Icons.visibility_off_rounded, 'Our Values', 'Transparency, privacy, and security guide every decision we make — from code to policy.', AppColors.accentPurple)),
           const SizedBox(width: 24),
-          Expanded(child: _ValueCard(Icons.public_rounded, 'Our Reach', '14 million users across 180 countries trust SecureVPN to protect their digital lives.', AppColors.success)),
+          Expanded(child: _ValueCard(Icons.public_rounded, 'Our Reach', '14 million users across 180 countries trust Atmos VPN to protect their digital lives.', AppColors.success)),
         ]),
         const SizedBox(height: 72),
         _sectionHeader('OUR STORY', 'From a small team to\n14 million users.'),
@@ -876,7 +876,7 @@ class _AboutDesktop extends StatelessWidget {
         Container(
           constraints: const BoxConstraints(maxWidth: 700),
           child: Text(
-            'SecureVPN was born from frustration. Our founders — a group of security engineers who spent years working in enterprise cybersecurity — watched as consumer VPN products consistently failed to meet the security standards of professional tools.\n\nWe decided to build the VPN we always wanted: one that combines the security rigour of enterprise tools with the simplicity of a consumer app. No compromises. No dark patterns. No data selling.\n\nToday, SecureVPN protects journalists in authoritarian regimes, activists in conflict zones, gamers who want fair competition, and everyday people who simply want their privacy back.',
+            'Atmos VPN was born from frustration. Our founders — a group of security engineers who spent years working in enterprise cybersecurity — watched as consumer VPN products consistently failed to meet the security standards of professional tools.\n\nWe decided to build the VPN we always wanted: one that combines the security rigour of enterprise tools with the simplicity of a consumer app. No compromises. No dark patterns. No data selling.\n\nToday, Atmos VPN protects journalists in authoritarian regimes, activists in conflict zones, gamers who want fair competition, and everyday people who simply want their privacy back.',
             textAlign: TextAlign.center,
             style: TextStyle(color: Colors.white.withValues(alpha: 0.55), fontSize: 16, height: 1.9),
           ),
@@ -924,39 +924,39 @@ class PrivacyPolicyPage extends StatelessWidget {
           title: 'Privacy Policy',
           lastUpdated: 'March 2026',
           sections: [
-            ('1. Introduction', 'SecureVPN Ltd ("we", "our", "us") is committed to protecting your privacy. This policy explains how we handle data in connection with our VPN service. tl;dr: We collect the minimum data necessary to provide the service, and we never sell or share your data with third parties for marketing purposes.'),
+            ('1. Introduction', 'Atmos VPN Ltd ("we", "our", "us") is committed to protecting your privacy. This policy explains how we handle data in connection with our VPN service. tl;dr: We collect the minimum data necessary to provide the service, and we never sell or share your data with third parties for marketing purposes.'),
             ('2. What We Collect', 'Account data: Email address, hashed password, subscription plan. Payment data: Processed securely through Stripe — we never see or store your card details. Diagnostic data (optional): Crash reports that you can disable in app settings. We do NOT collect: Your IP address, browsing history, DNS queries, connection timestamps, bandwidth, or any data that could identify your activity.'),
             ('3. Zero-Logs Policy', 'Our no-logs policy is audited by Cure53 biannually. Our VPN infrastructure operates exclusively on RAM-only servers. No data is written to persistent storage. When a server restarts, all data is permanently wiped.'),
             ('4. Data Retention', 'Account data is retained until you delete your account. Payment records are kept for 7 years as required by UK accounting law. Deleted account data is purged within 30 days.'),
-            ('5. Your Rights', 'Under UK GDPR, you have the right to: access your data, correct inaccurate data, request deletion, data portability, and to restrict processing. Contact privacy@securevpn.com to exercise these rights.'),
+            ('5. Your Rights', 'Under UK GDPR, you have the right to: access your data, correct inaccurate data, request deletion, data portability, and to restrict processing. Contact privacy@atmosvpn.com to exercise these rights.'),
             ('6. Security', 'All data in transit is encrypted with TLS 1.3. Passwords are hashed using bcrypt with cost factor 12. We undergo third-party security audits annually.'),
-            ('7. Contact', 'SecureVPN Ltd, 30 Churchill Place, London, E14 5EU. Email: privacy@securevpn.com'),
+            ('7. Contact', 'Atmos VPN Ltd, 30 Churchill Place, London, E14 5EU. Email: privacy@atmosvpn.com'),
           ],
         ),
         tablet: _LegalPage(
           title: 'Privacy Policy',
           lastUpdated: 'March 2026',
           sections: [
-            ('1. Introduction', 'SecureVPN Ltd ("we", "our", "us") is committed to protecting your privacy. This policy explains how we handle data in connection with our VPN service. tl;dr: We collect the minimum data necessary to provide the service, and we never sell or share your data with third parties for marketing purposes.'),
+            ('1. Introduction', 'Atmos VPN Ltd ("we", "our", "us") is committed to protecting your privacy. This policy explains how we handle data in connection with our VPN service. tl;dr: We collect the minimum data necessary to provide the service, and we never sell or share your data with third parties for marketing purposes.'),
             ('2. What We Collect', 'Account data: Email address, hashed password, subscription plan. Payment data: Processed securely through Stripe — we never see or store your card details. Diagnostic data (optional): Crash reports that you can disable in app settings. We do NOT collect: Your IP address, browsing history, DNS queries, connection timestamps, bandwidth, or any data that could identify your activity.'),
             ('3. Zero-Logs Policy', 'Our no-logs policy is audited by Cure53 biannually. Our VPN infrastructure operates exclusively on RAM-only servers. No data is written to persistent storage. When a server restarts, all data is permanently wiped.'),
             ('4. Data Retention', 'Account data is retained until you delete your account. Payment records are kept for 7 years as required by UK accounting law. Deleted account data is purged within 30 days.'),
-            ('5. Your Rights', 'Under UK GDPR, you have the right to: access your data, correct inaccurate data, request deletion, data portability, and to restrict processing. Contact privacy@securevpn.com to exercise these rights.'),
+            ('5. Your Rights', 'Under UK GDPR, you have the right to: access your data, correct inaccurate data, request deletion, data portability, and to restrict processing. Contact privacy@atmosvpn.com to exercise these rights.'),
             ('6. Security', 'All data in transit is encrypted with TLS 1.3. Passwords are hashed using bcrypt with cost factor 12. We undergo third-party security audits annually.'),
-            ('7. Contact', 'SecureVPN Ltd, 30 Churchill Place, London, E14 5EU. Email: privacy@securevpn.com'),
+            ('7. Contact', 'Atmos VPN Ltd, 30 Churchill Place, London, E14 5EU. Email: privacy@atmosvpn.com'),
           ],
         ),
         desktop: _LegalPage(
           title: 'Privacy Policy',
           lastUpdated: 'March 2026',
           sections: [
-            ('1. Introduction', 'SecureVPN Ltd ("we", "our", "us") is committed to protecting your privacy. This policy explains how we handle data in connection with our VPN service. tl;dr: We collect the minimum data necessary to provide the service, and we never sell or share your data with third parties for marketing purposes.'),
+            ('1. Introduction', 'Atmos VPN Ltd ("we", "our", "us") is committed to protecting your privacy. This policy explains how we handle data in connection with our VPN service. tl;dr: We collect the minimum data necessary to provide the service, and we never sell or share your data with third parties for marketing purposes.'),
             ('2. What We Collect', 'Account data: Email address, hashed password, subscription plan. Payment data: Processed securely through Stripe — we never see or store your card details. Diagnostic data (optional): Crash reports that you can disable in app settings. We do NOT collect: Your IP address, browsing history, DNS queries, connection timestamps, bandwidth, or any data that could identify your activity.'),
             ('3. Zero-Logs Policy', 'Our no-logs policy is audited by Cure53 biannually. Our VPN infrastructure operates exclusively on RAM-only servers. No data is written to persistent storage. When a server restarts, all data is permanently wiped.'),
             ('4. Data Retention', 'Account data is retained until you delete your account. Payment records are kept for 7 years as required by UK accounting law. Deleted account data is purged within 30 days.'),
-            ('5. Your Rights', 'Under UK GDPR, you have the right to: access your data, correct inaccurate data, request deletion, data portability, and to restrict processing. Contact privacy@securevpn.com to exercise these rights.'),
+            ('5. Your Rights', 'Under UK GDPR, you have the right to: access your data, correct inaccurate data, request deletion, data portability, and to restrict processing. Contact privacy@atmosvpn.com to exercise these rights.'),
             ('6. Security', 'All data in transit is encrypted with TLS 1.3. Passwords are hashed using bcrypt with cost factor 12. We undergo third-party security audits annually.'),
-            ('7. Contact', 'SecureVPN Ltd, 30 Churchill Place, London, E14 5EU. Email: privacy@securevpn.com'),
+            ('7. Contact', 'Atmos VPN Ltd, 30 Churchill Place, London, E14 5EU. Email: privacy@atmosvpn.com'),
           ],
         ),
       ),
@@ -978,8 +978,8 @@ class TermsPage extends StatelessWidget {
           title: 'Terms of Service',
           lastUpdated: 'March 2026',
           sections: [
-            ('1. Acceptance', 'By using SecureVPN, you agree to these Terms of Service. If you do not agree, please stop using the service immediately.'),
-            ('2. Permitted Use', 'SecureVPN may only be used for lawful purposes. You may not use SecureVPN to: conduct illegal activities, send spam, conduct DDoS attacks, access material that exploits children, or circumvent export restrictions.'),
+            ('1. Acceptance', 'By using Atmos VPN, you agree to these Terms of Service. If you do not agree, please stop using the service immediately.'),
+            ('2. Permitted Use', 'Atmos VPN may only be used for lawful purposes. You may not use Atmos VPN to: conduct illegal activities, send spam, conduct DDoS attacks, access material that exploits children, or circumvent export restrictions.'),
             ('3. Account Responsibility', 'You are responsible for maintaining the security of your account credentials. You must notify us immediately of any unauthorised access.'),
             ('4. Free Plan Limitations', 'Free accounts are limited to 45-minute VPN sessions with standard mode only. Ads may be displayed within the app on the free plan.'),
             ('5. Subscription', 'Paid subscriptions are billed in advance. All plans include a 30-day money-back guarantee. Cancellations take effect at the end of the current billing period.'),
@@ -992,8 +992,8 @@ class TermsPage extends StatelessWidget {
           title: 'Terms of Service',
           lastUpdated: 'March 2026',
           sections: [
-            ('1. Acceptance', 'By using SecureVPN, you agree to these Terms of Service. If you do not agree, please stop using the service immediately.'),
-            ('2. Permitted Use', 'SecureVPN may only be used for lawful purposes. You may not use SecureVPN to: conduct illegal activities, send spam, conduct DDoS attacks, access material that exploits children, or circumvent export restrictions.'),
+            ('1. Acceptance', 'By using Atmos VPN, you agree to these Terms of Service. If you do not agree, please stop using the service immediately.'),
+            ('2. Permitted Use', 'Atmos VPN may only be used for lawful purposes. You may not use Atmos VPN to: conduct illegal activities, send spam, conduct DDoS attacks, access material that exploits children, or circumvent export restrictions.'),
             ('3. Account Responsibility', 'You are responsible for maintaining the security of your account credentials. You must notify us immediately of any unauthorised access.'),
             ('4. Free Plan Limitations', 'Free accounts are limited to 45-minute VPN sessions with standard mode only. Ads may be displayed within the app on the free plan.'),
             ('5. Subscription', 'Paid subscriptions are billed in advance. All plans include a 30-day money-back guarantee. Cancellations take effect at the end of the current billing period.'),
@@ -1006,8 +1006,8 @@ class TermsPage extends StatelessWidget {
           title: 'Terms of Service',
           lastUpdated: 'March 2026',
           sections: [
-            ('1. Acceptance', 'By using SecureVPN, you agree to these Terms of Service. If you do not agree, please stop using the service immediately.'),
-            ('2. Permitted Use', 'SecureVPN may only be used for lawful purposes. You may not use SecureVPN to: conduct illegal activities, send spam, conduct DDoS attacks, access material that exploits children, or circumvent export restrictions.'),
+            ('1. Acceptance', 'By using Atmos VPN, you agree to these Terms of Service. If you do not agree, please stop using the service immediately.'),
+            ('2. Permitted Use', 'Atmos VPN may only be used for lawful purposes. You may not use Atmos VPN to: conduct illegal activities, send spam, conduct DDoS attacks, access material that exploits children, or circumvent export restrictions.'),
             ('3. Account Responsibility', 'You are responsible for maintaining the security of your account credentials. You must notify us immediately of any unauthorised access.'),
             ('4. Free Plan Limitations', 'Free accounts are limited to 45-minute VPN sessions with standard mode only. Ads may be displayed within the app on the free plan.'),
             ('5. Subscription', 'Paid subscriptions are billed in advance. All plans include a 30-day money-back guarantee. Cancellations take effect at the end of the current billing period.'),
@@ -1095,13 +1095,13 @@ class ContactPage extends StatelessWidget {
             Expanded(flex: 4, child: _ContactForm()),
             const SizedBox(width: 60),
             Expanded(flex: 3, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              _ContactInfo(Icons.email_rounded, 'General Enquiries', 'hello@securevpn.com'),
+              _ContactInfo(Icons.email_rounded, 'General Enquiries', 'hello@atmosvpn.com'),
               const SizedBox(height: 20),
-              _ContactInfo(Icons.security_rounded, 'Security Reports', 'security@securevpn.com'),
+              _ContactInfo(Icons.security_rounded, 'Security Reports', 'security@atmosvpn.com'),
               const SizedBox(height: 20),
-              _ContactInfo(Icons.business_rounded, 'Business & Enterprise', 'enterprise@securevpn.com'),
+              _ContactInfo(Icons.business_rounded, 'Business & Enterprise', 'enterprise@atmosvpn.com'),
               const SizedBox(height: 20),
-              _ContactInfo(Icons.privacy_tip_rounded, 'Privacy & Legal', 'privacy@securevpn.com'),
+              _ContactInfo(Icons.privacy_tip_rounded, 'Privacy & Legal', 'privacy@atmosvpn.com'),
               const SizedBox(height: 32),
               Container(padding: const EdgeInsets.all(20), decoration: BoxDecoration(color: AppColors.primaryBlue.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(16), border: Border.all(color: AppColors.primaryBlue.withValues(alpha: 0.2))), child: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Row(children: [Icon(Icons.headset_mic_rounded, color: AppColors.primaryBlue, size: 18), SizedBox(width: 8), Text('24/7 Live Support', style: TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.w900))]),
@@ -1315,7 +1315,7 @@ class _FeaturesFooterContent extends StatelessWidget {
             final wide = constraints.maxWidth >= 900;
             final cols = wide ? 4 : 2;
             final items = [
-              _FooterColumn('SecureVPN', const [
+              _FooterColumn('Atmos VPN', const [
                 'About us',
                 'Careers',
                 'Money-back guarantee',
@@ -1340,11 +1340,11 @@ class _FeaturesFooterContent extends StatelessWidget {
                 'Ask an expert',
               ]),
               _FooterColumn('Discover', const [
-                'SecureVPN Security',
-                'SecureVPN Layer',
-                'SecureVPN Pass',
-                'SecureVPN Stellar',
-                'SecureVPN Protect',
+                'Atmos VPN Security',
+                'Atmos VPN Layer',
+                'Atmos VPN Pass',
+                'Atmos VPN Stellar',
+                'Atmos VPN Protect',
                 'Saily',
                ]),
             ];
