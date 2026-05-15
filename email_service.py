@@ -11,8 +11,8 @@ APP_BASE_URL = os.environ.get("APP_BASE_URL", "http://localhost:5000")
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
 
 # SMTP Configuration
-SMTP_SERVER = os.environ.get("SMTP_SERVER", "")
-SMTP_PORT = int(os.environ.get("SMTP_PORT", 587))
+SMTP_SERVER   = os.environ.get("SMTP_SERVER", "")
+SMTP_PORT     = int(os.environ.get("SMTP_PORT", 587))
 SMTP_USERNAME = os.environ.get("SMTP_USERNAME", "")
 SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
 
@@ -20,6 +20,36 @@ SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
 SUPPORT_EMAIL = os.environ.get("SUPPORT_EMAIL", SMTP_USERNAME or "atmosvpn00@gmail.com")
 
 
+# ─── Internal helper ───────────────────────────────────────────────────────────
+def _send_smtp(to_email: str, subject: str, html_content: str) -> bool:
+    """Sends an HTML email via configured SMTP. Falls back to terminal simulation."""
+    if not SMTP_SERVER or not SMTP_USERNAME:
+        print(f"\n{'='*60}")
+        print("SMTP EMAIL SIMULATOR")
+        print(f"TO: {to_email}")
+        print(f"SUBJECT: {subject}")
+        print("-" * 60)
+        print(html_content[:400])
+        print(f"{'='*60}\n")
+        return True
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"]    = f"AtmosVPN <{SUPPORT_EMAIL}>"
+        msg["To"]      = to_email
+        msg.attach(MIMEText(html_content, "html"))
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+            server.starttls()
+            server.login(SMTP_USERNAME, SMTP_PASSWORD)
+            server.sendmail(SUPPORT_EMAIL, to_email, msg.as_string())
+        print(f"Email sent to {to_email}")
+        return True
+    except Exception as e:
+        print(f"SMTP error sending to {to_email}: {e}")
+        return False
+
+
+# ─── Password Reset ────────────────────────────────────────────────────────────
 def send_password_reset_email(to_email: str, token: str) -> bool:
     """
     Sends a beautifully formatted password reset email via SMTP.
@@ -43,36 +73,93 @@ def send_password_reset_email(to_email: str, token: str) -> bool:
         <p style="font-size: 12px; color: #888; text-align: center;">© AtmosVPN. All rights reserved.</p>
     </div>
     """
+    return _send_smtp(to_email, "Reset Your Password", html_content)
 
-    if not SMTP_SERVER or not SMTP_USERNAME:
-        print("\n" + "="*60)
-        print("📨 [SMTP EMAIL SIMULATOR]")
-        print(f"TO: {to_email}")
-        print("SUBJECT: Reset Your Password")
-        print("-" * 60)
-        print(f"Reset Link: {reset_link}")
-        print("="*60 + "\n")
-        return True
 
-    try:
-        # Create message container
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = "Reset Your Password"
-        msg["From"] = f"AtmosVPN <{SUPPORT_EMAIL}>"
-        msg["To"] = to_email
+# ─── Contact Form: Auto-reply to user ─────────────────────────────────────────
+def send_contact_confirmation_email(
+    to_email: str, name: str, subject: str, ticket_id: str
+) -> bool:
+    """
+    Sends an auto-reply to the user confirming their contact form was received.
+    Includes a ticket reference number so they can track the issue.
+    """
+    html_content = f"""
+    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#333;background:#f9f9f9;padding:30px;border-radius:8px;">
+        <h2 style="color:#2563eb;margin-bottom:4px;">AtmosVPN Support</h2>
+        <p style="color:#888;font-size:13px;margin-top:0;">We've received your message</p>
+        <hr style="border:none;border-top:1px solid #eaeaea;" />
+        <p>Hi <strong>{name}</strong>,</p>
+        <p>Thank you for contacting us! We've received your message regarding <strong>"{subject}"</strong> and a member of our team will get back to you within <strong>2 hours</strong>.</p>
+        <div style="background:#fff;border:1px solid #e0e0e0;border-radius:6px;padding:16px 20px;margin:20px 0;">
+            <p style="margin:0;font-size:13px;color:#888;">Your ticket reference</p>
+            <p style="margin:4px 0 0;font-size:22px;font-weight:bold;color:#2563eb;letter-spacing:2px;">#{ticket_id}</p>
+        </div>
+        <p>In the meantime, you may find your answer in our <a href="{FRONTEND_URL}/faq" style="color:#2563eb;">FAQ page</a>.</p>
+        <p style="color:#888;">— The AtmosVPN Support Team</p>
+        <hr style="border:none;border-top:1px solid #eaeaea;margin:30px 0;" />
+        <p style="font-size:11px;color:#aaa;text-align:center;">© AtmosVPN. All rights reserved. | support@atmosvpn.com</p>
+    </div>
+    """
+    return _send_smtp(
+        to_email,
+        f"[#{ticket_id}] We received your message – AtmosVPN Support",
+        html_content,
+    )
 
-        # Attach HTML content
-        part = MIMEText(html_content, "html")
-        msg.attach(part)
 
-        # Connect to server and send
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-            server.starttls()
-            server.login(SMTP_USERNAME, SMTP_PASSWORD)
-            server.sendmail(SUPPORT_EMAIL, to_email, msg.as_string())
-            
-        print(f"✅ Reset email successfully sent to {to_email} via SMTP")
-        return True
-    except Exception as e:
-        print(f"⚠️ Failed to send SMTP reset email: {e}")
-        return False
+# ─── Contact Form: Internal admin notification ─────────────────────────────────
+def send_contact_admin_notification(
+    ticket_id: str,
+    name: str,
+    email: str,
+    subject: str,
+    category: str,
+    message: str,
+) -> bool:
+    """
+    Sends an internal notification to the support inbox whenever a new contact
+    form is submitted. Lets the support team act without logging into the admin panel.
+    """
+    html_content = f"""
+    <div style="font-family:Arial,sans-serif;max-width:640px;margin:0 auto;color:#333;">
+        <h2 style="color:#e53e3e;">New Support Ticket #{ticket_id}</h2>
+        <table style="width:100%;border-collapse:collapse;font-size:14px;">
+            <tr style="background:#f5f5f5;">
+                <td style="padding:10px;font-weight:bold;width:140px;">Ticket ID</td>
+                <td style="padding:10px;">#{ticket_id}</td>
+            </tr>
+            <tr>
+                <td style="padding:10px;font-weight:bold;">Name</td>
+                <td style="padding:10px;">{name}</td>
+            </tr>
+            <tr style="background:#f5f5f5;">
+                <td style="padding:10px;font-weight:bold;">Email</td>
+                <td style="padding:10px;"><a href="mailto:{email}">{email}</a></td>
+            </tr>
+            <tr>
+                <td style="padding:10px;font-weight:bold;">Subject</td>
+                <td style="padding:10px;">{subject}</td>
+            </tr>
+            <tr style="background:#f5f5f5;">
+                <td style="padding:10px;font-weight:bold;">Category</td>
+                <td style="padding:10px;">{category}</td>
+            </tr>
+        </table>
+        <div style="margin-top:20px;padding:16px;background:#fefefe;border:1px solid #ddd;border-radius:6px;">
+            <p style="margin:0;font-weight:bold;color:#555;">Message:</p>
+            <p style="margin:8px 0 0;white-space:pre-wrap;">{message}</p>
+        </div>
+        <p style="margin-top:20px;">
+            <a href="{APP_BASE_URL}/api/admin/tickets"
+               style="background:#2563eb;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;font-size:14px;">
+               View in Admin Panel
+            </a>
+        </p>
+    </div>
+    """
+    return _send_smtp(
+        SUPPORT_EMAIL,
+        f"[New Ticket #{ticket_id}] {subject} — from {name}",
+        html_content,
+    )

@@ -639,7 +639,8 @@ class SupportTicket(Base):
     subject  = Column(String(255))
     message  = Column(Text)
     category = Column(String(50))   # billing|technical|general|abuse
-    status   = Column(String(20), default="open")  # open|in_progress|resolved|closed
+    status   = Column(String(20), default="open")   # open|in_progress|resolved|closed
+    priority = Column(String(20), default="medium") # urgent|high|medium|low
 
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow)
@@ -653,6 +654,7 @@ class SupportTicket(Base):
             "subject":    self.subject,
             "category":   self.category,
             "status":     self.status,
+            "priority":   self.priority,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

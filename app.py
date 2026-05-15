@@ -25,7 +25,11 @@ from redis_client import (
     store_password_reset_token, get_user_by_reset_token
 )
 
-from email_service import send_password_reset_email
+from email_service import (
+    send_password_reset_email,
+    send_contact_confirmation_email,
+    send_contact_admin_notification,
+)
 
 from fastapi import FastAPI, Depends, HTTPException, Request, Header, status
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -465,11 +469,23 @@ class CheckoutRequest(BaseModel):
     billing_cycle: str = "monthly"
 
 
+# Valid subject choices shown in the Contact Us page dropdown
+CONTACT_SUBJECTS = {
+    "technical":      "Technical Support",
+    "billing":        "Billing & Payments",
+    "account":        "Account Issues",
+    "press":          "Press & Media",
+    "business":       "Business & Partnerships",
+    "security":       "Security Vulnerability",
+    "general":        "General Inquiry",
+}
+
+
 class SupportTicketRequest(BaseModel):
+    name:     str
     email:    EmailStr
-    subject:  Optional[str] = "Support Request"
+    subject:  str = "general"   # one of the CONTACT_SUBJECTS keys
     message:  str
-    category: str = "general"
 
 
 class PushTokenRequest(BaseModel):
@@ -2031,25 +2047,134 @@ def remove_device(
 
 
 # ─────────────────────────────────────────────────────────────────
-# Support Routes
+# Contact / Support Routes  (public — no auth required)
 # ─────────────────────────────────────────────────────────────────
-@app.post("/api/support/ticket", tags=["Support"])
-def submit_ticket(body: SupportTicketRequest, db: Session = Depends(get_db)):
-    """Submit a support ticket. Does not require login."""
+
+@app.get("/api/contact/info", tags=["Support"])
+def get_contact_info():
+    """
+    Returns the static contact channel data shown on the right side of
+    the Contact Us page (live chat, email addresses, press, security etc.)
+    and the list of valid subject options for the contact form dropdown.
+    """
+    return success({
+        "channels": [
+            {
+                "id":          "live_chat",
+                "label":       "Live Chat",
+                "description": "Available 24/7 — avg. 3 min response",
+                "icon":        "chat",
+                "action":      None,        # frontend opens its own chat widget
+            },
+            {
+                "id":          "email_support",
+                "label":       "Email Support",
+                "description": "support@atmosvpn.com",
+                "icon":        "email",
+                "action":      "mailto:support@atmosvpn.com",
+            },
+            {
+                "id":          "press",
+                "label":       "Press & Media",
+                "description": "press@atmosvpn.com",
+                "icon":        "press",
+                "action":      "mailto:press@atmosvpn.com",
+            },
+            {
+                "id":          "business",
+                "label":       "Business & Partnerships",
+                "description": "business@atmosvpn.com",
+                "icon":        "business",
+                "action":      "mailto:business@atmosvpn.com",
+            },
+            {
+                "id":          "security",
+                "label":       "Security Vulnerability",
+                "description": "security@atmosvpn.com",
+                "icon":        "security",
+                "action":      "mailto:security@atmosvpn.com",
+            },
+        ],
+        "subjects": [
+            {"value": k, "label": v}
+            for k, v in CONTACT_SUBJECTS.items()
+        ],
+        "response_time":  "2 hours",
+        "availability":   "24/7/365",
+    })
+
+
+@app.post("/api/contact", tags=["Support"])
+def submit_contact_form(body: SupportTicketRequest, db: Session = Depends(get_db)):
+    """
+    Contact Us form submission (atmosvpn.com/contact).
+    - No auth required (works for visitors who are not logged in)
+    - Validates subject against allowed list
+    - Saves to support_tickets table
+    - Sends auto-reply confirmation email to the user
+    - Sends internal notification to support@atmosvpn.com
+    """
+    # Validate subject key
+    subject_key = body.subject.lower().strip()
+    if subject_key not in CONTACT_SUBJECTS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid subject. Allowed values: {list(CONTACT_SUBJECTS.keys())}"
+        )
+
+    subject_label = CONTACT_SUBJECTS[subject_key]
+
+    # Save ticket to DB
     ticket = SupportTicket(
-        email=body.email,
-        subject=body.subject or "Support Request",
-        message=body.message,
-        category=body.category,
+        email    = body.email,
+        subject  = subject_label,
+        message  = body.message,
+        category = subject_key,
+        status   = "open",
+        priority = "high" if subject_key == "security" else "medium",
     )
     db.add(ticket)
     db.commit()
     db.refresh(ticket)
+
+    ticket_ref = str(ticket.id)[:8].upper()   # short reference e.g. "A3F2C1B0"
+
+    # Send emails in background (non-blocking)
+    try:
+        send_contact_confirmation_email(
+            to_email  = body.email,
+            name      = body.name,
+            subject   = subject_label,
+            ticket_id = ticket_ref,
+        )
+        send_contact_admin_notification(
+            ticket_id = ticket_ref,
+            name      = body.name,
+            email     = body.email,
+            subject   = subject_label,
+            category  = subject_key,
+            message   = body.message,
+        )
+    except Exception as e:
+        # Email failure should never block the user from getting a success response
+        print(f"Email notification failed for ticket {ticket_ref}: {e}")
+
     return success(
-        {"ticket_id": ticket.id},
-        msg="Ticket submitted! We'll reply within 24 hours.",
+        {
+            "ticket_id":     str(ticket.id),
+            "ticket_ref":    ticket_ref,
+            "subject":       subject_label,
+            "response_time": "2 hours",
+        },
+        msg="Message sent! We'll get back to you within 2 hours.",
         status_code=201,
     )
+
+
+@app.post("/api/support/ticket", tags=["Support"])
+def submit_ticket(body: SupportTicketRequest, db: Session = Depends(get_db)):
+    """Legacy alias for /api/contact — kept for backward compatibility."""
+    return submit_contact_form(body, db)
 
 
 @app.get("/api/support/faq", tags=["Support"])
