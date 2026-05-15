@@ -43,7 +43,8 @@ from sqlalchemy.orm import Session
 from models import (
     Base, engine, get_db,
     User, VPNServer, VPNSession, VPNConfig, IPPool, UsageLog,
-    Device, Subscription, SupportTicket, Notification, Plan
+    Device, Subscription, SupportTicket, Notification, Plan,
+    Ad, AdView
 )
 from wireguard import (
     claim_ip_from_pool, release_ip_to_pool,
@@ -380,6 +381,7 @@ def on_startup():
         db = next(get_db())
         try:
             seed_database(db)
+            _seed_default_ad(db)
         finally:
             db.close()
         print("✅ Database connected and tables ready.")
@@ -508,6 +510,34 @@ class AdminUpdateSettingsRequest(BaseModel):
 
 class AdminLoginRequest(BaseModel):
     password: str
+
+
+class AdminCreateAdRequest(BaseModel):
+    title:            str
+    description:      Optional[str]  = None
+    image_url:        Optional[str]  = None
+    video_url:        Optional[str]  = None
+    click_url:        Optional[str]  = None
+    ad_type:          str            = "rewarded"   # banner | interstitial | rewarded
+    duration_seconds: int            = 30
+    reward_minutes:   int            = 30
+    target_plans:     str            = "free"       # comma-sep: "free" or "free,starter"
+    priority:         int            = 0
+    is_active:        bool           = True
+
+
+class AdminUpdateAdRequest(BaseModel):
+    title:            Optional[str]  = None
+    description:      Optional[str]  = None
+    image_url:        Optional[str]  = None
+    video_url:        Optional[str]  = None
+    click_url:        Optional[str]  = None
+    ad_type:          Optional[str]  = None
+    duration_seconds: Optional[int]  = None
+    reward_minutes:   Optional[int]  = None
+    target_plans:     Optional[str]  = None
+    priority:         Optional[int]  = None
+    is_active:        Optional[bool] = None
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -2636,6 +2666,36 @@ def run_speed_test(
 # Admin Routes — Protected by X-Admin-Token header
 # ─────────────────────────────────────────────────────────────────
 
+# ─────────────────────────────────────────────────────────────────
+# Ads Helper — seed one sample ad on first startup
+# ─────────────────────────────────────────────────────────────────
+def _seed_default_ad(db: Session):
+    """Insert a sample rewarded ad if the ads table is empty."""
+    if db.query(Ad).count() == 0:
+        sample = Ad(
+            title            = "Upgrade to AtmosVPN Pro",
+            description      = "Get unlimited data & all server locations for just $7.99/mo",
+            image_url        = "https://atmosvpn.com/ads/upgrade-banner.png",
+            video_url        = None,
+            click_url        = "https://atmosvpn.com/upgrade",
+            ad_type          = "rewarded",
+            duration_seconds = 30,
+            reward_minutes   = 30,
+            target_plans     = "free",
+            priority         = 10,
+            is_active        = True,
+        )
+        db.add(sample)
+        db.commit()
+        print("✅ Seeded default ad creative.")
+
+
+# ─────────────────────────────────────────────────────────────────
+# Ads — Cooldown constant (configurable here)
+# ─────────────────────────────────────────────────────────────────
+AD_COOLDOWN_MINUTES = 60   # users must wait 60 min between ad rewards
+
+
 # In-memory app config (move to DB in production)
 _app_config = {
     "free_session_minutes": 45,
@@ -2644,6 +2704,240 @@ _app_config = {
     "ads_enabled":          True,
     "maintenance_mode":     False,
 }
+
+
+# ─────────────────────────────────────────────────────────────────
+# Ads — User-Facing Endpoints
+# ─────────────────────────────────────────────────────────────────
+
+@app.get("/api/ads/status", tags=["Ads"])
+def ads_status(
+    user: User    = Depends(get_current_user),
+    db:   Session = Depends(get_db),
+):
+    """
+    Quick status check — is there an ad ready to watch?
+    The app calls this on the home screen to decide whether to show the
+    'Watch ad for 30 min free VPN' banner.
+    """
+    now = datetime.utcnow()
+
+    # Paid users never see ads
+    if user.plan not in ("free", "starter"):
+        return success({
+            "ads_enabled":              False,
+            "reason":                   "paid_plan",
+            "can_watch":                False,
+            "cooldown_remaining_seconds": 0,
+            "vpn_time_remaining_seconds": None,
+            "reward_minutes":           0,
+            "views_today":              0,
+        })
+
+    if not _app_config.get("ads_enabled", True):
+        return success({
+            "ads_enabled":              False,
+            "reason":                   "disabled_by_admin",
+            "can_watch":                False,
+            "cooldown_remaining_seconds": 0,
+            "vpn_time_remaining_seconds": None,
+            "reward_minutes":           _app_config.get("ad_bonus_minutes", 30),
+            "views_today":              0,
+        })
+
+    # Cooldown: find last ad view
+    last_view = (
+        db.query(AdView)
+        .filter_by(user_id=str(user.id))
+        .order_by(AdView.watched_at.desc())
+        .first()
+    )
+    cooldown_remaining = 0
+    can_watch = True
+    if last_view:
+        elapsed = (now - last_view.watched_at).total_seconds()
+        cooldown_seconds = AD_COOLDOWN_MINUTES * 60
+        if elapsed < cooldown_seconds:
+            cooldown_remaining = int(cooldown_seconds - elapsed)
+            can_watch = False
+
+    # VPN time remaining
+    vpn_remaining = None
+    if user.vpn_expiration_time and user.vpn_expiration_time > now:
+        vpn_remaining = int((user.vpn_expiration_time - now).total_seconds())
+
+    # Views today
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    views_today = (
+        db.query(AdView)
+        .filter(AdView.user_id == str(user.id), AdView.watched_at >= today_start)
+        .count()
+    )
+
+    return success({
+        "ads_enabled":               True,
+        "can_watch":                 can_watch,
+        "cooldown_remaining_seconds": cooldown_remaining,
+        "vpn_time_remaining_seconds": vpn_remaining,
+        "reward_minutes":            _app_config.get("ad_bonus_minutes", 30),
+        "views_today":               views_today,
+    })
+
+
+@app.get("/api/ads/current", tags=["Ads"])
+def ads_get_current(
+    user: User    = Depends(get_current_user),
+    db:   Session = Depends(get_db),
+):
+    """
+    Returns the ad creative the app should display to the user.
+    Also returns cooldown state so the app can decide when to show the reward button.
+    """
+    now = datetime.utcnow()
+
+    # Only free / starter users see ads
+    if user.plan not in ("free", "starter"):
+        return success({"ads_enabled": False, "reason": "paid_plan"})
+
+    if not _app_config.get("ads_enabled", True):
+        return success({"ads_enabled": False, "reason": "disabled_by_admin"})
+
+    # Pick the highest-priority active ad that targets this plan
+    ad = (
+        db.query(Ad)
+        .filter(
+            Ad.is_active == True,
+            Ad.target_plans.ilike(f"%{user.plan}%"),
+        )
+        .order_by(Ad.priority.desc(), Ad.created_at.desc())
+        .first()
+    )
+
+    if not ad:
+        return success({"ads_enabled": True, "ad": None, "reason": "no_ads_available"})
+
+    # Cooldown check
+    last_view = (
+        db.query(AdView)
+        .filter_by(user_id=str(user.id))
+        .order_by(AdView.watched_at.desc())
+        .first()
+    )
+    cooldown_remaining = 0
+    can_watch = True
+    if last_view:
+        elapsed = (now - last_view.watched_at).total_seconds()
+        cooldown_seconds = AD_COOLDOWN_MINUTES * 60
+        if elapsed < cooldown_seconds:
+            cooldown_remaining = int(cooldown_seconds - elapsed)
+            can_watch = False
+
+    # VPN time remaining
+    vpn_remaining = None
+    if user.vpn_expiration_time and user.vpn_expiration_time > now:
+        vpn_remaining = int((user.vpn_expiration_time - now).total_seconds())
+
+    return success({
+        "ads_enabled":               True,
+        "can_watch":                 can_watch,
+        "cooldown_remaining_seconds": cooldown_remaining,
+        "vpn_time_remaining_seconds": vpn_remaining,
+        "reward_minutes":            ad.reward_minutes,
+        "ad":                        ad.to_dict(),
+    })
+
+
+@app.post("/api/ads/{ad_id}/watch", tags=["Ads"])
+def ads_record_watch(
+    ad_id: str,
+    user:  User    = Depends(get_current_user),
+    db:    Session = Depends(get_db),
+):
+    """
+    Called by the app AFTER the user has finished watching the ad.
+    Credits the reward minutes to vpn_expiration_time.
+
+    Anti-abuse rules:
+      - Only free / starter plan users can claim rewards
+      - 60-minute cooldown between claims (per user, not per ad)
+      - Ad must be active
+    """
+    now = datetime.utcnow()
+
+    # 1. Only free / starter users earn rewards
+    if user.plan not in ("free", "starter"):
+        raise HTTPException(
+            status_code=403,
+            detail="Ad rewards are only available on the Free plan.",
+        )
+
+    # 2. Global kill switch
+    if not _app_config.get("ads_enabled", True):
+        raise HTTPException(status_code=403, detail="Ads are currently disabled.")
+
+    # 3. Validate the ad
+    ad = db.get(Ad, ad_id)
+    if not ad or not ad.is_active:
+        raise HTTPException(status_code=404, detail="Ad not found or no longer active.")
+
+    if user.plan not in (ad.target_plans or "free").split(","):
+        raise HTTPException(status_code=403, detail="This ad is not available for your plan.")
+
+    # 4. Cooldown check (60 min between ad views)
+    last_view = (
+        db.query(AdView)
+        .filter_by(user_id=str(user.id))
+        .order_by(AdView.watched_at.desc())
+        .first()
+    )
+    if last_view:
+        elapsed = (now - last_view.watched_at).total_seconds()
+        cooldown_seconds = AD_COOLDOWN_MINUTES * 60
+        if elapsed < cooldown_seconds:
+            remaining_min = int((cooldown_seconds - elapsed) / 60) + 1
+            raise HTTPException(
+                status_code=429,
+                detail=f"Ad cooldown active. Try again in {remaining_min} minute(s).",
+            )
+
+    # 5. Credit the reward minutes to vpn_expiration_time
+    reward_minutes = ad.reward_minutes
+    session_before = user.vpn_expiration_time
+
+    if session_before is None or session_before < now:
+        # No active time — start fresh from now
+        user.vpn_expiration_time = now + timedelta(minutes=reward_minutes)
+    else:
+        # Extend existing active time
+        user.vpn_expiration_time = session_before + timedelta(minutes=reward_minutes)
+
+    session_after = user.vpn_expiration_time
+
+    # 6. Write AdView record
+    view = AdView(
+        user_id        = str(user.id),
+        ad_id          = str(ad.id),
+        watched_at     = now,
+        reward_minutes = reward_minutes,
+        session_before = session_before,
+        session_after  = session_after,
+    )
+    db.add(view)
+    db.commit()
+
+    # Next ad available at
+    next_available_at = now + timedelta(minutes=AD_COOLDOWN_MINUTES)
+    vpn_remaining = int((session_after - now).total_seconds())
+
+    return success(
+        {
+            "reward_minutes":         reward_minutes,
+            "vpn_expiration_time":    session_after.isoformat() + "Z",
+            "vpn_time_remaining_seconds": vpn_remaining,
+            "next_ad_available_at":   next_available_at.isoformat() + "Z",
+        },
+        msg=f"{reward_minutes} bonus minutes credited!",
+    )
 
 
 @app.post("/api/admin/login", tags=["Admin"])
@@ -2894,6 +3188,140 @@ def admin_update_settings(
     updates = body.model_dump(exclude_none=True)
     _app_config.update(updates)
     return success(_app_config, "Settings updated")
+
+
+# ─────────────────────────────────────────────────────────────────
+# Admin — Ads CRUD
+# ─────────────────────────────────────────────────────────────────
+
+@app.get("/api/admin/ads", tags=["Admin"])
+def admin_list_ads(
+    active_only: bool = False,
+    _:           None    = Depends(admin_required),
+    db:          Session = Depends(get_db),
+):
+    """List all ad creatives. Optionally filter to active only."""
+    q = db.query(Ad)
+    if active_only:
+        q = q.filter_by(is_active=True)
+    ads = q.order_by(Ad.priority.desc(), Ad.created_at.desc()).all()
+    return success({"ads": [a.to_dict() for a in ads], "total": len(ads)})
+
+
+@app.post("/api/admin/ads", tags=["Admin"])
+def admin_create_ad(
+    body: AdminCreateAdRequest,
+    _:    None    = Depends(admin_required),
+    db:   Session = Depends(get_db),
+):
+    """Create a new ad creative."""
+    ad = Ad(
+        title            = body.title,
+        description      = body.description,
+        image_url        = body.image_url,
+        video_url        = body.video_url,
+        click_url        = body.click_url,
+        ad_type          = body.ad_type,
+        duration_seconds = body.duration_seconds,
+        reward_minutes   = body.reward_minutes,
+        target_plans     = body.target_plans,
+        priority         = body.priority,
+        is_active        = body.is_active,
+    )
+    db.add(ad)
+    db.commit()
+    db.refresh(ad)
+    return success(ad.to_dict(), "Ad created", status_code=201)
+
+
+@app.patch("/api/admin/ads/{ad_id}", tags=["Admin"])
+def admin_update_ad(
+    ad_id: str,
+    body:  AdminUpdateAdRequest,
+    _:     None    = Depends(admin_required),
+    db:    Session = Depends(get_db),
+):
+    """Update an existing ad creative (toggle active, change reward, etc.)."""
+    ad = db.get(Ad, ad_id)
+    if not ad:
+        raise HTTPException(status_code=404, detail="Ad not found")
+
+    update_fields = [
+        "title", "description", "image_url", "video_url", "click_url",
+        "ad_type", "duration_seconds", "reward_minutes",
+        "target_plans", "priority", "is_active",
+    ]
+    for field in update_fields:
+        value = getattr(body, field)
+        if value is not None:
+            setattr(ad, field, value)
+
+    ad.updated_at = datetime.utcnow()
+    db.commit()
+    return success(ad.to_dict(), "Ad updated")
+
+
+@app.delete("/api/admin/ads/{ad_id}", tags=["Admin"])
+def admin_delete_ad(
+    ad_id: str,
+    _:     None    = Depends(admin_required),
+    db:    Session = Depends(get_db),
+):
+    """Permanently delete an ad and all its view records."""
+    ad = db.get(Ad, ad_id)
+    if not ad:
+        raise HTTPException(status_code=404, detail="Ad not found")
+    db.delete(ad)
+    db.commit()
+    return success(msg="Ad deleted")
+
+
+@app.get("/api/admin/ads/stats", tags=["Admin"])
+def admin_ads_stats(
+    _:  None    = Depends(admin_required),
+    db: Session = Depends(get_db),
+):
+    """
+    Ad analytics for the admin dashboard.
+    Returns total views, rewards credited, and per-day breakdown.
+    """
+    from sqlalchemy import func
+    now        = datetime.utcnow()
+    today      = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_start = today - timedelta(days=7)
+
+    total_views        = db.query(AdView).count()
+    views_today        = db.query(AdView).filter(AdView.watched_at >= today).count()
+    views_this_week    = db.query(AdView).filter(AdView.watched_at >= week_start).count()
+    total_minutes      = db.query(func.sum(AdView.reward_minutes)).scalar() or 0
+    minutes_today      = db.query(func.sum(AdView.reward_minutes)).filter(AdView.watched_at >= today).scalar() or 0
+    unique_users_today = db.query(func.count(func.distinct(AdView.user_id))).filter(AdView.watched_at >= today).scalar() or 0
+
+    # Per-ad breakdown
+    per_ad = (
+        db.query(Ad.id, Ad.title, func.count(AdView.id).label("views"), func.sum(AdView.reward_minutes).label("total_minutes"))
+        .outerjoin(AdView, Ad.id == AdView.ad_id)
+        .group_by(Ad.id, Ad.title)
+        .all()
+    )
+
+    return success({
+        "total_views":          total_views,
+        "views_today":          views_today,
+        "views_this_week":      views_this_week,
+        "total_minutes_granted": total_minutes,
+        "minutes_today":        minutes_today,
+        "unique_users_today":   unique_users_today,
+        "per_ad": [
+            {
+                "ad_id":         str(row.id),
+                "title":         row.title,
+                "total_views":   row.views,
+                "total_minutes": row.total_minutes or 0,
+            }
+            for row in per_ad
+        ],
+    })
 
 
 # ─────────────────────────────────────────────────────────────────

@@ -707,6 +707,99 @@ class Notification(Base):
         }
 
 
+# ─────────────────────────────────────────────────────────────────
+# TABLE 12: ads
+# Ad creatives managed by the admin panel.
+# Free-plan users watch these to earn bonus VPN minutes.
+# ─────────────────────────────────────────────────────────────────
+class Ad(Base):
+    __tablename__ = "ads"
+
+    id          = Column(GUID, primary_key=True, default=new_uuid)
+
+    # Ad content
+    title       = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    image_url   = Column(String(500), nullable=True)   # banner / thumbnail
+    video_url   = Column(String(500), nullable=True)   # optional rewarded video
+    click_url   = Column(String(500), nullable=True)   # where to go on tap
+
+    # Ad behaviour
+    # ad_type: "banner" | "interstitial" | "rewarded"
+    ad_type          = Column(String(20), default="rewarded")
+    duration_seconds = Column(Integer, default=30)     # how long user must watch
+    reward_minutes   = Column(Integer, default=30)     # VPN minutes credited on completion
+
+    # Targeting
+    # target_plans: comma-separated plan keys e.g. "free" or "free,starter"
+    target_plans = Column(String(100), default="free")
+    priority     = Column(Integer, default=0)          # higher = shown first
+
+    # Admin control
+    is_active  = Column(Boolean, default=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationship
+    views = relationship("AdView", back_populates="ad", lazy="select", cascade="all, delete-orphan")
+
+    def to_dict(self):
+        return {
+            "id":               str(self.id),
+            "title":            self.title,
+            "description":      self.description,
+            "image_url":        self.image_url,
+            "video_url":        self.video_url,
+            "click_url":        self.click_url,
+            "ad_type":          self.ad_type,
+            "duration_seconds": self.duration_seconds,
+            "reward_minutes":   self.reward_minutes,
+            "target_plans":     self.target_plans.split(",") if self.target_plans else ["free"],
+            "priority":         self.priority,
+            "is_active":        self.is_active,
+            "created_at":       self.created_at.isoformat() if self.created_at else None,
+            "updated_at":       self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+# ─────────────────────────────────────────────────────────────────
+# TABLE 13: ad_views
+# Records every ad a user watches and the reward credited.
+# Used for cooldown enforcement and audit/analytics.
+# ─────────────────────────────────────────────────────────────────
+class AdView(Base):
+    __tablename__ = "ad_views"
+
+    id      = Column(GUID, primary_key=True, default=new_uuid)
+    user_id = Column(GUID, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    ad_id   = Column(GUID, ForeignKey("ads.id",   ondelete="CASCADE"), nullable=False, index=True)
+
+    watched_at     = Column(DateTime, default=datetime.utcnow, index=True)  # when reward claimed
+    reward_minutes = Column(Integer,  default=30)                           # minutes credited
+
+    # Snapshot of vpn_expiration_time before and after — useful for support/debugging
+    session_before = Column(DateTime, nullable=True)
+    session_after  = Column(DateTime, nullable=True)
+
+    # Relationships
+    ad = relationship("Ad", back_populates="views")
+
+    def to_dict(self):
+        return {
+            "id":             str(self.id),
+            "user_id":        str(self.user_id),
+            "ad_id":          str(self.ad_id),
+            "watched_at":     self.watched_at.isoformat() + "Z",
+            "reward_minutes": self.reward_minutes,
+            "session_before": self.session_before.isoformat() + "Z" if self.session_before else None,
+            "session_after":  self.session_after.isoformat()  + "Z" if self.session_after  else None,
+        }
+
+    __table_args__ = (
+        Index("idx_ad_views_user_watched", "user_id", "watched_at"),
+    )
+
+
 def _time_ago(dt: datetime) -> str:
     """Human-readable time difference: '2 min ago', '3 hours ago', 'Yesterday'."""
     diff = datetime.utcnow() - dt
