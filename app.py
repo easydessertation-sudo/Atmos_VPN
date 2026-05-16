@@ -2059,40 +2059,34 @@ def get_contact_info():
     """
     return success({
         "channels": [
-            {
-                "id":          "live_chat",
-                "label":       "Live Chat",
-                "description": "Available 24/7 — avg. 3 min response",
-                "icon":        "chat",
-                "action":      None,        # frontend opens its own chat widget
-            },
+
             {
                 "id":          "email_support",
                 "label":       "Email Support",
-                "description": "support@atmosvpn.com",
+                "description": "atmosvpn00@gmail.com",
                 "icon":        "email",
-                "action":      "mailto:support@atmosvpn.com",
+                "action":      "mailto:atmosvpn00@gmail.com",
             },
             {
                 "id":          "press",
                 "label":       "Press & Media",
-                "description": "press@atmosvpn.com",
+                "description": "atmosvpn00@gmail.com",
                 "icon":        "press",
-                "action":      "mailto:press@atmosvpn.com",
+                "action":      "mailto:atmosvpn00@gmail.com",
             },
             {
                 "id":          "business",
                 "label":       "Business & Partnerships",
-                "description": "business@atmosvpn.com",
+                "description": "atmosvpn00@gmail.com",
                 "icon":        "business",
-                "action":      "mailto:business@atmosvpn.com",
+                "action":      "mailto:atmosvpn00@gmail.com",
             },
             {
                 "id":          "security",
                 "label":       "Security Vulnerability",
-                "description": "security@atmosvpn.com",
+                "description": "atmosvpn00@gmail.com",
                 "icon":        "security",
-                "action":      "mailto:security@atmosvpn.com",
+                "action":      "mailto:atmosvpn00@gmail.com",
             },
         ],
         "subjects": [

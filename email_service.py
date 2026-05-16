@@ -98,7 +98,7 @@ def send_contact_confirmation_email(
         <p>In the meantime, you may find your answer in our <a href="{FRONTEND_URL}/faq" style="color:#2563eb;">FAQ page</a>.</p>
         <p style="color:#888;">— The AtmosVPN Support Team</p>
         <hr style="border:none;border-top:1px solid #eaeaea;margin:30px 0;" />
-        <p style="font-size:11px;color:#aaa;text-align:center;">© AtmosVPN. All rights reserved. | support@atmosvpn.com</p>
+        <p style="font-size:11px;color:#aaa;text-align:center;">© AtmosVPN. All rights reserved. | atmosvpn00@gmail.com</p>
     </div>
     """
     return _send_smtp(
