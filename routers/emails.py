@@ -534,8 +534,8 @@ def delete_template(template_id: str, _: None = Depends(admin_required)):
 
 _EMAIL_SETTINGS = {
     "sender_name":      "AtmosVPN",
-    "sender_email":     "noreply@atmosvpn.com",
-    "reply_to":         "support@atmosvpn.com",
+    "sender_email":     "atmosvpn00@gmail.com",
+    "reply_to":         "atmosvpn00@gmail.com",
     "provider":         "sendgrid",          # sendgrid | ses | mailgun | smtp
     "daily_send_limit": 50000,
     "unsubscribe_link": True,

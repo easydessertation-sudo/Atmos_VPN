@@ -20,8 +20,8 @@ router = APIRouter()
 _DEFAULT_CONFIG = {
     # General Settings (UI Tab)
     "site_name":             "AtmosVPN",
-    "support_email":         "support@atmosvpn.com",
-    "sales_email":           "sales@atmosvpn.com",
+    "support_email":         "atmosvpn00@gmail.com",
+    "sales_email":           "atmosvpn00@gmail.com",
     "twitter_handle":        "@AtmosVPN",
     "canonical_url":         "https://atmosvpn.com/",
     "app_version":           "4.2.1",
