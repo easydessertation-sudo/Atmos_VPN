@@ -35,3 +35,6 @@ asyncssh==2.22.0                   # SSH into WireGuard servers
 
 # ── Payment Processing ──────────────────────────────────────────────
 stripe==15.0.1                     # Stripe payments
+
+# ── File Uploads ──────────────────────────────────────────────────
+python-multipart==0.0.20           # Required for Form and UploadFile

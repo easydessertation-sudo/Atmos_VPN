@@ -31,7 +31,8 @@ from email_service import (
     send_contact_admin_notification,
 )
 
-from fastapi import FastAPI, Depends, HTTPException, Request, Header, status
+from fastapi import FastAPI, Depends, HTTPException, Request, Header, status, UploadFile, File, Form
+from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -86,6 +87,8 @@ limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+os.makedirs("uploads/avatars", exist_ok=True)
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 # ─────────────────────────────────────────────────────────────────
 # Health Check
 # ─────────────────────────────────────────────────────────────────
@@ -695,6 +698,52 @@ def me(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
         "devices":         [d.to_dict() for d in user.devices],
         "active_sessions": active_sessions,
     })
+
+
+@app.put("/api/auth/profile", tags=["Auth"])
+def update_profile(
+    full_name: Optional[str] = Form(None),
+    avatar: Optional[UploadFile] = File(None),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Update the user's profile name and/or avatar.
+    Accepts multipart/form-data.
+    """
+    import shutil
+    import uuid
+
+    if full_name is not None:
+        user.full_name = full_name.strip()
+
+    if avatar:
+        ext = avatar.filename.split('.')[-1].lower()
+        if ext not in ['jpg', 'jpeg', 'png', 'webp']:
+            raise HTTPException(status_code=400, detail="Invalid file type. Only JPG, PNG, and WebP are allowed.")
+        
+        filename = f"{user.id}_{uuid.uuid4().hex[:8]}.{ext}"
+        filepath = os.path.join("uploads", "avatars", filename)
+        
+        with open(filepath, "wb") as buffer:
+            shutil.copyfileobj(avatar.file, buffer)
+        
+        # Use request url logic to build the fully qualified url, or fallback to backend URL
+        # We will assume backend URL is https://api.atmosvpn.com based on the environment
+        # Wait, using a relative or absolute URL. Let's build an absolute one from the request,
+        # or use APP_BASE_URL.
+        base_url = os.environ.get("APP_BASE_URL", "https://api.atmosvpn.com").rstrip("/")
+        user.avatar_url = f"{base_url}/uploads/avatars/{filename}"
+
+    db.commit()
+    db.refresh(user)
+
+    return success(
+        {
+            "user": user.to_dict()
+        },
+        msg="Profile updated successfully"
+    )
 
 
 @app.post("/api/auth/change-password", tags=["Auth"])
