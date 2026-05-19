@@ -49,7 +49,7 @@ from models import (
     Base, engine, get_db,
     User, VPNServer, VPNSession, VPNConfig, IPPool, UsageLog,
     Device, Subscription, SupportTicket, Notification, Plan,
-    Ad, AdView
+    Ad, AdView, StatusSubscriber
 )
 from wireguard import (
     claim_ip_from_pool, release_ip_to_pool,
@@ -57,6 +57,7 @@ from wireguard import (
 )
 from tasks import add_wireguard_peer, remove_wireguard_peer
 from admin_alert_service import fire_admin_alert
+from email_service import send_status_welcome_email
 
 from stripe_client import (
     create_checkout_session,
@@ -1388,6 +1389,12 @@ def provision(
     if not server or not server.is_online:
         raise HTTPException(status_code=404, detail="Server not found or offline")
 
+    if server.required_plan != "free" and user.plan == "free":
+        raise HTTPException(
+            status_code=403,
+            detail=f"Upgrade required. This server requires the {server.required_plan.capitalize()} plan."
+        )
+
     # ── Step 2: Check if device already has a config for this server ─
     existing = get_existing_config(
         db, str(user.id), server_id, body.device_name
@@ -1713,6 +1720,12 @@ def connect(
     server = db.get(VPNServer, server_id)
     if not server or not server.is_online:
         raise HTTPException(status_code=404, detail="Server not found or offline")
+
+    if server.required_plan != "free" and user.plan == "free":
+        raise HTTPException(
+            status_code=403,
+            detail=f"Upgrade required. This server requires the {server.required_plan.capitalize()} plan."
+        )
 
     # ── Check user has a provisioned config for this server ───────
     config = get_existing_config(db, str(user.id), server_id)
@@ -3672,6 +3685,31 @@ def reset_password_page(token: str):
     </html>
     """
     return HTMLResponse(content=html)
+
+# ─────────────────────────────────────────────────────────────────
+# Status Page Routes
+# ─────────────────────────────────────────────────────────────────
+class StatusSubscribeRequest(BaseModel):
+    email: EmailStr
+
+@app.post("/api/status/subscribe", tags=["Status"])
+def status_subscribe(body: StatusSubscribeRequest, db: Session = Depends(get_db)):
+    """Subscribe to receive instant alerts when AtmosVPN services are affected."""
+    exists = db.query(StatusSubscriber).filter_by(email=body.email).first()
+    if exists:
+        return success(msg="You are already subscribed to status alerts.")
+    
+    sub = StatusSubscriber(email=body.email)
+    db.add(sub)
+    db.commit()
+    
+    # Send the automated welcome email
+    try:
+        send_status_welcome_email(body.email)
+    except Exception as e:
+        logger.error(f"Failed to send welcome email to {body.email}: {e}")
+        
+    return success(msg="Successfully subscribed to status alerts!")
 
 # ─────────────────────────────────────────────────────────────────
 # Entry Point

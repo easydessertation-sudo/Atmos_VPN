@@ -286,6 +286,7 @@ class VPNServer(Base):
     country_code = Column(String(5))                      # e.g. "gb", "us", "de"
     flag         = Column(String(10))                     # emoji flag e.g. "🇬🇧"
     ip_address   = Column(String(45))                     # server's public IP address
+    required_plan= Column(String(50), default="free")     # "free", "starter", "pro", "premium"
 
     # Performance metrics (updated regularly)
     ping_ms       = Column(Integer)
@@ -344,6 +345,7 @@ class VPNServer(Base):
                 "p2p":          self.is_p2p,
                 "dedicated_ip": self.is_dedicated_ip,
             },
+            "required_plan": self.required_plan,
             "protocols": self.protocols.split(",") if self.protocols else [],
         }
 
@@ -889,5 +891,19 @@ class Plan(Base):
             "is_visible": self.is_visible,
             "is_default": self.is_default,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+class StatusSubscriber(Base):
+    __tablename__ = "status_subscribers"
+
+    id         = Column(GUID, primary_key=True, default=new_uuid)
+    email      = Column(String(255), unique=True, nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            "id":         self.id,
+            "email":      self.email,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }

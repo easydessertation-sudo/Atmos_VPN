@@ -8,12 +8,36 @@ SSHes into all 4 servers and checks the exact current state:
 
 Run: .\\venv\\Scripts\\python live_check.py
 """
-import asyncio, logging, os
+import asyncio, logging, os, json, time
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 load_dotenv()
 
+from email_service import send_status_alert
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
 logger = logging.getLogger(__name__)
+
+# File to track when we last sent an alert so we don't spam users
+ALERTS_CACHE_FILE = "alerts_cache.json"
+
+def can_send_alert(server_name: str) -> bool:
+    try:
+        with open(ALERTS_CACHE_FILE, "r") as f:
+            cache = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        cache = {}
+    
+    last_sent = cache.get(server_name, 0)
+    now = time.time()
+    
+    # Only send 1 alert per server every 12 hours (43200 seconds)
+    if now - last_sent > 43200:
+        cache[server_name] = now
+        with open(ALERTS_CACHE_FILE, "w") as f:
+            json.dump(cache, f)
+        return True
+    return False
 
 SERVERS = [
     {"name": "Dallas",       "ip": "198.23.209.178", "password": "cL47Nmm6Ha6YyQ4T5g"},
@@ -91,12 +115,28 @@ async def main():
     print("  SUMMARY")
     print(f"{'='*60}")
     for r in results:
+        server_name = r['name']
         if "error" in r:
-            print(f"  ❌ {r['name']:15s}  SSH FAILED: {r['error']}")
+            print(f"  ❌ {server_name:15s}  SSH FAILED: {r['error']}")
+            
+            if can_send_alert(server_name):
+                logger.info(f"Triggering automated email alert for {server_name}...")
+                send_status_alert(
+                    subject=f"{server_name} Server Offline",
+                    message=f"We are currently experiencing an unexpected outage on our <strong>{server_name}</strong> server. Our engineers have been automatically notified and are investigating. We apologize for the inconvenience."
+                )
         else:
             ok = all([r["wg"], r["nat"], r["fwd"]])
-            print(f"  {'✅' if ok else '❌'} {r['name']:15s}  WG={'on' if r['wg'] else 'OFF'}  "
+            print(f"  {'✅' if ok else '❌'} {server_name:15s}  WG={'on' if r['wg'] else 'OFF'}  "
                   f"Peers={'yes' if r['peer'] else 'NO'}  NAT={'yes' if r['nat'] else 'NO'}  "
                   f"FWD={'on' if r['fwd'] else 'OFF'}  HS={'yes' if r['hs'] else 'no'}")
+            
+            if not ok and can_send_alert(server_name):
+                logger.info(f"Triggering automated email alert for {server_name} (Services failed)...")
+                send_status_alert(
+                    subject=f"{server_name} Services Disrupted",
+                    message=f"Our automated systems detected that the VPN services on the <strong>{server_name}</strong> node are currently disrupted. We are actively working to restore them."
+                )
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())

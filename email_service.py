@@ -163,3 +163,51 @@ def send_contact_admin_notification(
         f"[New Ticket #{ticket_id}] {subject} — from {name}",
         html_content,
     )
+
+# ─── Status Page: Automated Alerts ─────────────────────────────────────────────
+def send_status_alert(subject: str, message: str) -> None:
+    """
+    Blasts an email to all users subscribed to the Status Page alerts.
+    """
+    from models import SessionLocal, StatusSubscriber
+    db = SessionLocal()
+    try:
+        subscribers = db.query(StatusSubscriber).all()
+        if not subscribers:
+            print("No status subscribers found.")
+            return
+
+        html_content = f"""
+        <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#333;background:#f9f9f9;padding:30px;border-radius:8px;">
+            <h2 style="color:#e53e3e;margin-bottom:4px;">AtmosVPN Status Alert</h2>
+            <hr style="border:none;border-top:1px solid #eaeaea;" />
+            <p style="font-size:16px;">{message}</p>
+            <hr style="border:none;border-top:1px solid #eaeaea;margin:30px 0;" />
+            <p style="font-size:11px;color:#aaa;text-align:center;">You received this because you subscribed to AtmosVPN status alerts.</p>
+        </div>
+        """
+        
+        for sub in subscribers:
+            _send_smtp(sub.email, f"⚠️ AtmosVPN Alert: {subject}", html_content)
+            
+        print(f"Status alert sent to {len(subscribers)} subscribers.")
+    finally:
+        db.close()
+
+def send_status_welcome_email(to_email: str) -> bool:
+    """
+    Sends a confirmation email to the user when they first subscribe to status alerts.
+    """
+    html_content = f"""
+    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#333;background:#f9f9f9;padding:30px;border-radius:8px;">
+        <h2 style="color:#2563eb;margin-bottom:4px;">Subscription Confirmed</h2>
+        <hr style="border:none;border-top:1px solid #eaeaea;" />
+        <p>Hello,</p>
+        <p>You have successfully subscribed to <strong>AtmosVPN Status Alerts</strong>.</p>
+        <p>If any of our servers experience an unexpected outage or enter scheduled maintenance, you will be instantly notified right here in your inbox.</p>
+        <p>Thank you for choosing AtmosVPN!</p>
+        <hr style="border:none;border-top:1px solid #eaeaea;margin:30px 0;" />
+        <p style="font-size:11px;color:#aaa;text-align:center;">© AtmosVPN. All rights reserved.</p>
+    </div>
+    """
+    return _send_smtp(to_email, "Subscribed to AtmosVPN Status Alerts", html_content)
