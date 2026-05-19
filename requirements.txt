@@ -38,3 +38,7 @@ stripe==15.0.1                     # Stripe payments
 
 # ── File Uploads ──────────────────────────────────────────────────
 python-multipart==0.0.20           # Required for Form and UploadFile
+
+# ── Google & HTTP ─────────────────────────────────────────────────
+google-auth==2.35.0                # Google token verification
+requests==2.32.3                   # Making HTTP requests

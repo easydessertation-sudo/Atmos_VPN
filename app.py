@@ -2082,7 +2082,7 @@ def list_devices(user: User = Depends(get_current_user)):
 
 @app.delete("/api/devices/{device_id}", tags=["Devices"])
 def remove_device(
-    device_id: int,
+    device_id: str,
     user: User    = Depends(get_current_user),
     db:   Session = Depends(get_db),
 ):
