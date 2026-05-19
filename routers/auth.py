@@ -42,8 +42,10 @@ def setup_super_admin(body: SuperAdminSetupRequest, db: Session = Depends(get_db
     existing_super = db.query(AdminUser).filter(AdminUser.role == "Super Admin").first()
     if existing_super:
         raise HTTPException(status_code=400, detail="A Super Admin already exists. Please use the Admin Team dashboard to add more users.")
-        
-    hashed_password = pwd_context.hash(body.password)
+    
+    # bcrypt has a hard 72-byte limit — truncate to prevent ValueError on stricter bcrypt versions
+    safe_password = body.password.encode("utf-8")[:72].decode("utf-8", errors="ignore")
+    hashed_password = pwd_context.hash(safe_password)
     new_admin = AdminUser(
         name=body.name,
         email=body.email,
@@ -65,7 +67,11 @@ def admin_login(request: Request, body: AdminLoginRequest, db: Session = Depends
     Returns a JWT token to be used in the X-Admin-Token header.
     """
     admin_user = db.query(AdminUser).filter(AdminUser.email == body.email).first()
-    if not admin_user or not pwd_context.verify(body.password, admin_user.password_hash):
+    
+    # bcrypt has a hard 72-byte limit — truncate to prevent ValueError on stricter bcrypt versions
+    safe_password = body.password.encode("utf-8")[:72].decode("utf-8", errors="ignore")
+    
+    if not admin_user or not pwd_context.verify(safe_password, admin_user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid email or password")
         
     if admin_user.status != "Active":
