@@ -199,6 +199,7 @@ class User(Base):
 
     # Security & account
     email_verified = Column(Boolean, default=False)
+    email_verification_code = Column(String(10), nullable=True)
     two_fa_enabled = Column(Boolean, default=False)
     two_fa_secret  = Column(String(32))
 
@@ -268,6 +269,17 @@ class User(Base):
             "auto_connect":        self.auto_connect,
             "preferred_protocol":  self.preferred_protocol,
         }
+
+
+class PendingSignup(Base):
+    __tablename__ = "pending_signups"
+
+    id            = Column(GUID, primary_key=True, default=new_uuid)
+    email         = Column(String(255), unique=True, index=True, nullable=False)
+    password_hash = Column(String(255), nullable=False)
+    full_name     = Column(String(100), nullable=True)
+    code          = Column(String(10), nullable=False)
+    created_at    = Column(DateTime, default=datetime.utcnow)
 
 
 # ─────────────────────────────────────────────────────────────────

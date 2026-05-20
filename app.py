@@ -49,7 +49,7 @@ from models import (
     Base, engine, get_db,
     User, VPNServer, VPNSession, VPNConfig, IPPool, UsageLog,
     Device, Subscription, SupportTicket, Notification, Plan,
-    Ad, AdView, StatusSubscriber
+    Ad, AdView, StatusSubscriber, PendingSignup
 )
 from wireguard import (
     claim_ip_from_pool, release_ip_to_pool,
@@ -57,7 +57,7 @@ from wireguard import (
 )
 from tasks import add_wireguard_peer, remove_wireguard_peer
 from admin_alert_service import fire_admin_alert
-from email_service import send_status_welcome_email
+from email_service import send_status_welcome_email, send_verification_email
 
 from stripe_client import (
     create_checkout_session,
@@ -420,6 +420,16 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class VerifyEmailRequest(BaseModel):
+    email: EmailStr
+    code: str
+
+
+class ResendVerificationRequest(BaseModel):
+    email: EmailStr
+
+
+
 class ChangePasswordRequest(BaseModel):
     old_password: str
     new_password: str
@@ -584,43 +594,45 @@ def error(msg: str = "Error", status_code: int = 400, data=None):
 @limiter.limit("5/minute")
 def register(request: Request, body: RegisterRequest, db: Session = Depends(get_db)):
     """
-    Create a new user account.
-    - Hashes the password with bcrypt (never stored as plain text)
-    - Returns JWT access + refresh tokens
+    Initiate user registration. Stashes user details in DB temporarily (pending_signups table)
+    and sends a verification code. The account is only created in the users table after verification.
     """
     email = body.email.strip().lower()
 
     if db.query(User).filter_by(email=email).first():
         raise HTTPException(status_code=409, detail="An account with this email already exists")
 
-    user = User(
+    # Delete any old pending signup attempts for this email
+    db.query(PendingSignup).filter_by(email=email).delete()
+    db.commit()
+
+    import random
+    code = "".join(random.choices("0123456789", k=6))
+
+    pending = PendingSignup(
         email=email,
         password_hash=bcrypt.hash(body.password),
-        full_name=body.full_name,
-        plan="free",
+        full_name=body.full_name or "",
+        code=code
     )
-    db.add(user)
+    db.add(pending)
     db.commit()
-    db.refresh(user)
 
-    # ── Fire admin alert: new user signed up ───────────────────────────────
-    fire_admin_alert(
-        event_type = "new_signup",
-        title      = "👤 New User Registered",
-        message    = f"{email} just signed up on AtmosVPN.",
-        db         = db,
-        meta       = {"user_id": str(user.id), "email": email},
-    )
+    # ── Send verification email ──────────────────────────────────────────
+    try:
+        send_verification_email(email, code)
+    except Exception as e:
+        # Log error but don't fail the registration; user can resend code later.
+        pass
 
     return success(
         {
-            "user":          user.to_dict(),
-            "access_token":  create_access_token(user.id),
-            "refresh_token": create_refresh_token(user.id),
+            "requires_verification": True,
         },
-        msg="Account created successfully",
+        msg="Verification code sent. Please check your email to complete registration.",
         status_code=201,
     )
+
 
 
 @app.post("/api/auth/login", tags=["Auth"])
@@ -634,6 +646,12 @@ def login(request: Request, body: LoginRequest, db: Session = Depends(get_db)):
 
     if not user or not bcrypt.verify(body.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    if not user.email_verified:
+        raise HTTPException(
+            status_code=403,
+            detail="Email verification required. Please verify your email address first."
+        )
 
     user.last_login = datetime.utcnow()
     
@@ -678,6 +696,89 @@ def login(request: Request, body: LoginRequest, db: Session = Depends(get_db)):
         "refresh_token": create_refresh_token(user.id),
         "plan_limits":   PLAN_LIMITS.get(user.plan, PLAN_LIMITS["free"]),
     })
+
+
+@app.post("/api/auth/verify-email", tags=["Auth"])
+def verify_email(body: VerifyEmailRequest, db: Session = Depends(get_db)):
+    """
+    Verify the user's email address using the 6-digit code, create user account, and return login tokens.
+    """
+    email = body.email.strip().lower()
+    
+    # Check if user already created
+    if db.query(User).filter_by(email=email).first():
+        raise HTTPException(status_code=409, detail="Account is already registered and verified.")
+
+    pending = db.query(PendingSignup).filter_by(email=email).first()
+    if not pending:
+        raise HTTPException(status_code=400, detail="Verification code expired or registration not found. Please register again.")
+
+    if pending.code != body.code:
+        raise HTTPException(status_code=400, detail="Invalid verification code")
+
+    # Code is valid, create the user account in the DB
+    user = User(
+        email=email,
+        password_hash=pending.password_hash,
+        full_name=pending.full_name or "",
+        plan="free",
+        email_verified=True,
+    )
+    db.add(user)
+    
+    # Clean up pending signup
+    db.delete(pending)
+    db.commit()
+    db.refresh(user)
+
+    # ── Fire admin alert: new user signed up ───────────────────────────────
+    fire_admin_alert(
+        event_type = "new_signup",
+        title      = "👤 New User Registered",
+        message    = f"{email} just signed up on AtmosVPN.",
+        db         = db,
+        meta       = {"user_id": str(user.id), "email": email},
+    )
+
+    return success(
+        {
+            "user":          user.to_dict(),
+            "access_token":  create_access_token(user.id),
+            "refresh_token": create_refresh_token(user.id),
+            "plan_limits":   PLAN_LIMITS.get(user.plan, PLAN_LIMITS["free"]),
+        },
+        msg="Email verified and account created successfully.",
+    )
+
+
+@app.post("/api/auth/resend-verification", tags=["Auth"])
+@limiter.limit("3/minute")
+def resend_verification(request: Request, body: ResendVerificationRequest, db: Session = Depends(get_db)):
+    """
+    Resend the 6-digit email verification code to the user.
+    """
+    email = body.email.strip().lower()
+    
+    if db.query(User).filter_by(email=email).first():
+        return success(msg="Email is already verified")
+
+    pending = db.query(PendingSignup).filter_by(email=email).first()
+    if not pending:
+        raise HTTPException(status_code=400, detail="Registration expired or not found. Please register again.")
+
+    # Generate new code
+    import random
+    code = "".join(random.choices("0123456789", k=6))
+    pending.code = code
+    db.commit()
+
+    # Send email
+    try:
+        send_verification_email(email, code)
+    except Exception as e:
+        pass
+
+    return success(msg="Verification code resent successfully.")
 
 
 @app.post("/api/auth/refresh", tags=["Auth"])
@@ -1389,11 +1490,23 @@ def provision(
     if not server or not server.is_online:
         raise HTTPException(status_code=404, detail="Server not found or offline")
 
-    if server.required_plan != "free" and user.plan == "free":
+    if not user.email_verified:
         raise HTTPException(
             status_code=403,
-            detail=f"Upgrade required. This server requires the {server.required_plan.capitalize()} plan."
+            detail="Email verification required. Please verify your email first."
         )
+
+    now = datetime.utcnow()
+    has_active_reward = user.vpn_expiration_time and user.vpn_expiration_time > now
+
+    if server.required_plan != "free" and user.plan == "free":
+        if server.required_plan == "starter" and has_active_reward:
+            pass  # Allowed due to active ad reward!
+        else:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Upgrade required. This server requires the {server.required_plan.capitalize()} plan."
+            )
 
     # ── Step 2: Check if device already has a config for this server ─
     existing = get_existing_config(
@@ -1721,11 +1834,23 @@ def connect(
     if not server or not server.is_online:
         raise HTTPException(status_code=404, detail="Server not found or offline")
 
-    if server.required_plan != "free" and user.plan == "free":
+    if not user.email_verified:
         raise HTTPException(
             status_code=403,
-            detail=f"Upgrade required. This server requires the {server.required_plan.capitalize()} plan."
+            detail="Email verification required. Please verify your email first."
         )
+
+    now = datetime.utcnow()
+    has_active_reward = user.vpn_expiration_time and user.vpn_expiration_time > now
+
+    if server.required_plan != "free" and user.plan == "free":
+        if server.required_plan == "starter" and has_active_reward:
+            pass  # Allowed due to active ad reward!
+        else:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Upgrade required. This server requires the {server.required_plan.capitalize()} plan."
+            )
 
     # ── Check user has a provisioned config for this server ───────
     config = get_existing_config(db, str(user.id), server_id)

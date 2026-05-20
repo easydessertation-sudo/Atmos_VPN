@@ -211,3 +211,27 @@ def send_status_welcome_email(to_email: str) -> bool:
     </div>
     """
     return _send_smtp(to_email, "Subscribed to AtmosVPN Status Alerts", html_content)
+
+def send_verification_email(to_email: str, code: str) -> bool:
+    """
+    Sends a beautifully formatted email verification code to the user.
+    """
+    html_content = f"""
+    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#333;background:#f9f9f9;padding:30px;border-radius:8px;">
+        <h2 style="color:#2563eb;margin-bottom:4px;">AtmosVPN</h2>
+        <p style="color:#888;font-size:13px;margin-top:0;">Verify Your Email Address</p>
+        <hr style="border:none;border-top:1px solid #eaeaea;" />
+        <p>Hello,</p>
+        <p>Thank you for signing up for AtmosVPN! To complete your registration and activate your account, please enter the following verification code in the app:</p>
+        <div style="background:#fff;border:1px solid #e0e0e0;border-radius:6px;padding:16px 20px;margin:20px 0;text-align:center;">
+            <p style="margin:0;font-size:13px;color:#888;">Your verification code</p>
+            <p style="margin:8px 0 0;font-size:32px;font-weight:bold;color:#2563eb;letter-spacing:4px;line-height:1;">{code}</p>
+        </div>
+        <p>This verification code is valid for the next 24 hours. If you did not sign up for AtmosVPN, please ignore this email.</p>
+        <p style="color:#888;">— The AtmosVPN Team</p>
+        <hr style="border:none;border-top:1px solid #eaeaea;margin:30px 0;" />
+        <p style="font-size:11px;color:#aaa;text-align:center;">© AtmosVPN. All rights reserved. | support@atmosvpn.com</p>
+    </div>
+    """
+    return _send_smtp(to_email, "Verify your AtmosVPN account", html_content)
+
