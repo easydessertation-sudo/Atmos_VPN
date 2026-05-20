@@ -370,11 +370,30 @@ def disconnect_expired_users():
     
     try:
         now = datetime.utcnow()
-        # Find active sessions for users whose time has expired
-        expired_sessions = db.query(VPNSession).join(User).filter(
-            VPNSession.is_active == True,
-            User.vpn_expiration_time < now
-        ).all()
+        # Find all active sessions
+        active_sessions = db.query(VPNSession).filter(VPNSession.is_active == True).all()
+        
+        expired_sessions = []
+        for session in active_sessions:
+            user = session.user
+            server = db.get(VPNServer, session.server_id)
+            if not user or not server:
+                continue
+            
+            is_expired = False
+            if user.plan == "free":
+                if server.required_plan != "free":
+                    # Ad-reward connection
+                    if not user.vpn_expiration_time or user.vpn_expiration_time < now:
+                        is_expired = True
+                else:
+                    # Standard free session limit (45 minutes)
+                    elapsed = (now - session.started_at).total_seconds()
+                    if elapsed >= 45 * 60:
+                        is_expired = True
+            
+            if is_expired:
+                expired_sessions.append(session)
         
         count = 0
         for session in expired_sessions:

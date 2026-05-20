@@ -289,14 +289,17 @@ def revoke_all_user_configs(db: Session, user_id: str) -> int:
         server = db.get(VPNServer, config.server_id)
         if server and server.ip_address:
             job_id = str(uuid.uuid4())
-            remove_wireguard_peer.delay(
-                job_id=job_id,
-                server_ip=server.ip_address,
-                public_key=config.public_key,
-                assigned_ip=config.assigned_ip,
-                config_id=str(config.id),
-            )
-            logger.info(f"Queued peer removal for config {config.id} on {server.id}")
+            try:
+                remove_wireguard_peer.delay(
+                    job_id=job_id,
+                    server_ip=server.ip_address,
+                    public_key=config.public_key,
+                    assigned_ip=config.assigned_ip,
+                    config_id=str(config.id),
+                )
+                logger.info(f"Queued peer removal for config {config.id} on {server.id}")
+            except Exception as e:
+                logger.error(f"Failed to queue peer removal via Celery: {e}")
 
         revoked_count += 1
 

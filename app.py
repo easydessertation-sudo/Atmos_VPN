@@ -1763,13 +1763,16 @@ def revoke_config(
     # Step 4: Queue background task to remove peer from WireGuard server
     if server and server.ip_address:
         job_id = str(_uuid.uuid4())
-        remove_wireguard_peer.delay(
-            job_id=job_id,
-            server_ip=server.ip_address,
-            public_key=config.public_key,
-            assigned_ip=config.assigned_ip,
-            config_id=config_id,
-        )
+        try:
+            remove_wireguard_peer.delay(
+                job_id=job_id,
+                server_ip=server.ip_address,
+                public_key=config.public_key,
+                assigned_ip=config.assigned_ip,
+                config_id=config_id,
+            )
+        except Exception as e:
+            logger.error(f"Failed to queue peer removal via Celery: {e}")
 
     return success(msg=f"Device config revoked. Peer removal queued on server {config.server_id}.")
 
@@ -1949,12 +1952,73 @@ def vpn_status(user: User = Depends(get_current_user), db: Session = Depends(get
     Check whether the current user has an active VPN session.
     Called by the client app when it opens.
     Also returns subscription validity and bandwidth usage.
+    Automatically disconnects users whose session or ad reward time has expired.
     """
     session = db.query(VPNSession).filter_by(user_id=str(user.id), is_active=True).first()
     if session:
         server  = db.get(VPNServer, session.server_id)
-        elapsed = (datetime.utcnow() - session.started_at).total_seconds()
-        remaining = max(0, 45 * 60 - int(elapsed)) if user.plan == "free" else None
+        now = datetime.utcnow()
+        elapsed = (now - session.started_at).total_seconds()
+
+        # Determine if connection has expired
+        is_expired = False
+        remaining = None
+
+        if user.plan == "free":
+            if server and server.required_plan != "free":
+                # Ad-reward connection
+                if not user.vpn_expiration_time or user.vpn_expiration_time < now:
+                    is_expired = True
+                    remaining = 0
+                else:
+                    remaining = max(0, int((user.vpn_expiration_time - now).total_seconds()))
+            else:
+                # Standard free session limit (45 minutes)
+                if elapsed >= 45 * 60:
+                    is_expired = True
+                    remaining = 0
+                else:
+                    remaining = max(0, 45 * 60 - int(elapsed))
+
+        if is_expired:
+            # End session in the DB
+            session.is_active = False
+            session.ended_at = now
+            session.bytes_down = random.randint(10_000_000, 500_000_000)
+            session.bytes_up   = random.randint(1_000_000,  50_000_000)
+
+            # Log usage
+            usage_log = UsageLog(
+                user_id=str(user.id),
+                server_id=session.server_id,
+                bytes_sent=session.bytes_up,
+                bytes_received=session.bytes_down,
+                session_start=session.started_at,
+                session_end=session.ended_at,
+            )
+            db.add(usage_log)
+
+            user.bandwidth_used_bytes = (user.bandwidth_used_bytes or 0) + session.bytes_down + session.bytes_up
+            db.commit()
+
+            # Queue background task to remove peer from WireGuard server
+            if server and server.ip_address:
+                config = db.get(VPNConfig, session.config_id) if session.config_id else None
+                if config:
+                    import uuid as _uuid
+                    try:
+                        remove_wireguard_peer.delay(
+                            job_id=str(_uuid.uuid4()),
+                            server_ip=server.ip_address,
+                            public_key=config.public_key,
+                            assigned_ip=config.assigned_ip,
+                            config_id=str(config.id),
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to queue peer removal via Celery: {e}")
+
+            return success({"connected": False}, msg="VPN session expired and disconnected.")
+
         return success({
             "connected":         True,
             "session":           session.to_dict(),
@@ -2013,18 +2077,26 @@ def get_session_time(user: User = Depends(get_current_user)):
 def watch_ad(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """
     Called when the frontend verifies an AdMob ad was watched.
-    Adds 45 minutes to the user's current vpn_expiration_time.
+    Adds the configured bonus minutes to the user's current vpn_expiration_time.
     """
     now = datetime.utcnow()
+    reward_minutes = _app_config.get("ad_bonus_minutes", 30)
     
     if not user.vpn_expiration_time or user.vpn_expiration_time < now:
-        user.vpn_expiration_time = now + timedelta(minutes=45)
+        user.vpn_expiration_time = now + timedelta(minutes=reward_minutes)
     else:
-        user.vpn_expiration_time += timedelta(minutes=45)
+        user.vpn_expiration_time += timedelta(minutes=reward_minutes)
         
     db.commit()
     remaining = int((user.vpn_expiration_time - now).total_seconds())
-    return success({"remaining_seconds": remaining}, msg="Added 45 minutes of VPN time!")
+    return success(
+        {
+            "reward_minutes": reward_minutes,
+            "remaining_seconds": remaining
+        }, 
+        msg=f"{reward_minutes} bonus minutes credited!"
+    )
+
 
 
 @app.get("/api/vpn/history", tags=["VPN"])
@@ -2067,6 +2139,7 @@ def get_plans(db: Session = Depends(get_db)):
     Return all available plans and their prices.
     Reads from the plans DB table (editable via admin panel).
     Falls back to built-in PLANS config if DB table is empty.
+    Hides all plans except 'free' and 'starter' from user view.
     """
     db_plans = db.query(Plan).order_by(Plan.amount_usd).all()
 
@@ -2074,6 +2147,8 @@ def get_plans(db: Session = Depends(get_db)):
         # Build response from DB — reflects any admin edits instantly
         result = {}
         for p in db_plans:
+            if p.key not in ("free", "starter"):  # Hide other plans for user view
+                continue
             if not p.is_visible:
                 continue
             result[p.key] = {
@@ -2105,8 +2180,9 @@ def get_plans(db: Session = Depends(get_db)):
             }
         return success(result)
 
-    # Fallback: DB table not yet seeded — return built-in config
-    return success(PLANS)
+    # Fallback: DB table not yet seeded — return built-in config (filtered)
+    filtered_plans = {k: v for k, v in PLANS.items() if k in ("free", "starter")}
+    return success(filtered_plans)
 
 
 @app.get("/api/billing/status", tags=["Billing"])
