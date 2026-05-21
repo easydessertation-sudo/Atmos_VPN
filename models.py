@@ -237,6 +237,7 @@ class User(Base):
     subscriptions = relationship("Subscription",  back_populates="user", lazy="select", cascade="all, delete-orphan")
     tickets       = relationship("SupportTicket", back_populates="user", lazy="select")
     notifications = relationship("Notification",  back_populates="user", lazy="select", cascade="all, delete-orphan", order_by="Notification.created_at.desc()")
+    fcm_tokens    = relationship("FCMToken",      back_populates="user", lazy="select", cascade="all, delete-orphan")
 
     def to_dict(self):
         return {
@@ -720,6 +721,40 @@ class Notification(Base):
             "meta":        _json.loads(self.meta) if self.meta else None,
             "created_at":  self.created_at.isoformat() + "Z",
             "time_ago":    _time_ago(self.created_at),
+        }
+
+
+# ─────────────────────────────────────────────────────────────────
+# TABLE 14: fcm_tokens
+# Stores Firebase Cloud Messaging push tokens for user devices
+# ─────────────────────────────────────────────────────────────────
+class FCMToken(Base):
+    __tablename__ = "fcm_tokens"
+
+    id         = Column(GUID, primary_key=True, default=new_uuid)
+    user_id    = Column(GUID, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    device_id  = Column(String(255), nullable=False, index=True)
+    fcm_token  = Column(Text, nullable=False)
+    platform   = Column(String(50), nullable=True) # ios | android
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    user = relationship("User", back_populates="fcm_tokens")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "device_id", name="uq_user_device_fcm"),
+    )
+
+    def to_dict(self):
+        return {
+            "id":         str(self.id),
+            "user_id":    str(self.user_id),
+            "device_id":  self.device_id,
+            "fcm_token":  self.fcm_token,
+            "platform":   self.platform,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
 
 

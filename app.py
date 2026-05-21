@@ -6,12 +6,19 @@ Run with:  uvicorn app:app --reload --port 5000
 Docs at:   http://localhost:5000/docs
 """
 import os
+import sys
 import random
 import time
 import secrets
 import logging
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict
+
+# Safe stdout encoding for Windows compatibility with Unicode/Emojis
+try:
+    sys.stdout.reconfigure(encoding='utf-8')
+except AttributeError:
+    pass
 
 from dotenv import load_dotenv
 
@@ -49,7 +56,7 @@ from models import (
     Base, engine, get_db,
     User, VPNServer, VPNSession, VPNConfig, IPPool, UsageLog,
     Device, Subscription, SupportTicket, Notification, Plan,
-    Ad, AdView, StatusSubscriber, PendingSignup
+    Ad, AdView, StatusSubscriber, PendingSignup, FCMToken
 )
 from wireguard import (
     claim_ip_from_pool, release_ip_to_pool,
@@ -508,6 +515,13 @@ class PushTokenRequest(BaseModel):
     device_name: Optional[str] = None
 
 
+class FCMTokenRegisterRequest(BaseModel):
+    fcm_token: str
+    device_id: str
+    platform:  str  # ios | android
+
+
+
 class AdminUpdateUserRequest(BaseModel):
     plan:      Optional[str] = None
     full_name: Optional[str] = None
@@ -676,19 +690,17 @@ def login(request: Request, body: LoginRequest, db: Session = Depends(get_db)):
     device.last_seen = datetime.utcnow()
     
     if is_new_device:
-        import json as _json
-        location = "Unknown Location" # In production, use GeoIP on ip_address
-        n = Notification(
+        create_notification(
+            db=db,
             user_id=str(user.id),
-            type="login",
+            notification_type="login",
             title="New login detected",
             message=f"New device logged in from {ip_address}",
-            is_read=False,
-            meta=_json.dumps({"ip": ip_address, "device": platform})
+            meta={"ip": ip_address, "device": platform},
         )
-        db.add(n)
+    else:
+        db.commit()
 
-    db.commit()
 
     return success({
         "user":          user.to_dict(),
@@ -2650,6 +2662,119 @@ def register_push_token(
     )
 
 
+def create_notification(
+    db: Session,
+    user_id: str,
+    notification_type: str,
+    title: str,
+    message: str,
+    meta: Optional[dict] = None,
+    coming_soon: bool = False,
+):
+    """
+    Creates an in-app notification in the database,
+    and asynchronously triggers an FCM push notification.
+    """
+    import json as _json
+    meta_str = _json.dumps(meta) if meta else None
+    
+    n = Notification(
+        user_id=user_id,
+        type=notification_type,
+        title=title,
+        message=message,
+        is_read=False,
+        coming_soon=coming_soon,
+        meta=meta_str,
+    )
+    db.add(n)
+    db.commit()
+    db.refresh(n)
+
+    # Trigger FCM push notification in background via Celery
+    try:
+        from tasks import send_push_notification
+        send_push_notification.delay(
+            user_id=user_id,
+            title=title,
+            message=message,
+            notification_type=notification_type,
+            meta=meta_str
+        )
+    except Exception as e:
+        logger.error(f"Failed to queue FCM push notification: {e}")
+
+    return n
+
+
+@app.post("/api/users/fcm-token", tags=["Account"])
+def register_fcm_token(
+    body: FCMTokenRegisterRequest,
+    user: User    = Depends(get_current_user),
+    db:   Session = Depends(get_db),
+):
+    """
+    Register FCM device token for push notifications.
+    Stores FCM token in user_devices (fcm_tokens) database table.
+    """
+    fcm_token = body.fcm_token.strip()
+    device_id = body.device_id.strip()
+    platform  = body.platform.strip().lower()
+
+    if not fcm_token or not device_id:
+        raise HTTPException(status_code=400, detail="fcm_token and device_id are required")
+
+    # Security cleanup: Remove this token or device_id if previously associated with another user
+    db.query(FCMToken).filter(FCMToken.fcm_token == fcm_token, FCMToken.user_id != str(user.id)).delete()
+    db.query(FCMToken).filter(FCMToken.device_id == device_id, FCMToken.user_id != str(user.id)).delete()
+
+    existing = db.query(FCMToken).filter_by(user_id=str(user.id), device_id=device_id).first()
+    if existing:
+        existing.fcm_token = fcm_token
+        existing.platform = platform
+        existing.updated_at = datetime.utcnow()
+    else:
+        new_token = FCMToken(
+            user_id=str(user.id),
+            device_id=device_id,
+            fcm_token=fcm_token,
+            platform=platform,
+        )
+        db.add(new_token)
+
+    db.commit()
+    return success(msg="FCM token registered successfully")
+
+
+@app.delete("/api/users/fcm-token", tags=["Account"])
+def delete_fcm_token(
+    device_id: Optional[str] = None,
+    fcm_token: Optional[str] = None,
+    user: User    = Depends(get_current_user),
+    db:   Session = Depends(get_db),
+):
+    """
+    Delete registered FCM token for the device.
+    """
+    if not device_id and not fcm_token:
+        raise HTTPException(status_code=400, detail="Either device_id or fcm_token must be provided")
+
+    query = db.query(FCMToken).filter(FCMToken.user_id == str(user.id))
+    if device_id:
+        query = query.filter(FCMToken.device_id == device_id.strip())
+    if fcm_token:
+        query = query.filter(FCMToken.fcm_token == fcm_token.strip())
+
+    entries = query.all()
+    if not entries:
+        raise HTTPException(status_code=404, detail="No matching FCM token found")
+
+    for entry in entries:
+        db.delete(entry)
+    db.commit()
+    return success(msg="FCM token deleted successfully")
+
+
 def _seed_default_notifications(user: User, db: Session):
     """
     Seed default notifications for a user on first fetch.
@@ -2755,40 +2880,39 @@ def test_trigger_notification(
 ):
     """
     TEST ENDPOINT: Generate a new random notification to test UI polling/updates.
+    Also fires a real FCM push notification via Celery (or logs in simulation mode).
     """
     import random
+    import json as _json
     
     templates = [
-        {"type": "security", "title": "Malware Blocked", "message": "AtmosVPN blocked a malicious download attempt."},
-        {"type": "vpn_event", "title": "Connection unstable", "message": "Your connection dropped briefly, but kill switch protected you."},
-        {"type": "login", "title": "New Login", "message": "New device logged in from New York, USA.", "meta": '{"location": "New York, USA"}'},
+        {"type": "security", "title": "Malware Blocked", "message": "AtmosVPN blocked a malicious download attempt.", "meta": None},
+        {"type": "vpn_event", "title": "Connection unstable", "message": "Your connection dropped briefly, but kill switch protected you.", "meta": None},
+        {"type": "login", "title": "New Login", "message": "New device logged in from New York, USA.", "meta": {"location": "New York, USA"}},
     ]
     t = random.choice(templates)
     
-    n = Notification(
+    n = create_notification(
+        db=db,
         user_id=str(user.id),
-        type=t["type"],
+        notification_type=t["type"],
         title=t["title"],
         message=t["message"],
-        is_read=False,
-        coming_soon=False,
-        meta=t.get("meta")
+        meta=t.get("meta"),
     )
-    db.add(n)
-    db.commit()
-    db.refresh(n)
-    return success(n.to_dict(), msg="New notification generated successfully")
+    return success(n.to_dict(), msg="New notification generated and push queued successfully")
 
 
 @app.get("/api/notifications", tags=["Account"])
 def get_notifications(
-
-    unread_only: bool     = False,
+    unread_only: bool = False,
+    page:        int  = 1,
+    limit:       int  = 20,
     user: User            = Depends(get_current_user),
     db:   Session         = Depends(get_db),
 ):
     """
-    Return in-app notifications for the current user.
+    Return in-app notifications for the current user with pagination support.
     All 5 types from the UI are supported:
       - security    → Unsafe website blocked
       - vpn_event   → VPN disconnected / kill switch
@@ -2797,27 +2921,47 @@ def get_notifications(
       - bandwidth   → Data usage warnings
       - upgrade     → Plan upgrade suggestions
 
-    Query param: ?unread_only=true  → only return unread notifications
+    Query params:
+      ?unread_only=true  → only return unread notifications
+      ?page=1            → page number (1-indexed, default 1)
+      ?limit=20          → number of results per page (default 20, max 100)
     """
+    # Clamp pagination values
+    page  = max(1, page)
+    limit = max(1, min(limit, 100))
+
     # Seed default notifications on first visit
-    count = db.query(Notification).filter_by(user_id=str(user.id)).count()
-    if count == 0:
+    total_count = db.query(Notification).filter_by(user_id=str(user.id)).count()
+    if total_count == 0:
         _seed_default_notifications(user, db)
+        total_count = db.query(Notification).filter_by(user_id=str(user.id)).count()
 
     q = db.query(Notification).filter_by(user_id=str(user.id))
     if unread_only:
-        q = q.filter_by(is_read=False)
+        q = q.filter(Notification.is_read == False)
+
+    # Get total matching count before pagination
+    total_matching = q.count()
+
     q = q.order_by(Notification.created_at.desc())
+    q = q.offset((page - 1) * limit).limit(limit)
 
     notifications = q.all()
-    unread_count  = db.query(Notification).filter_by(
-        user_id=str(user.id), is_read=False
+    unread_count  = db.query(Notification).filter(
+        Notification.user_id == str(user.id),
+        Notification.is_read == False,
     ).count()
+
+    total_pages = (total_matching + limit - 1) // limit  # ceiling division
 
     return success({
         "notifications": [n.to_dict() for n in notifications],
         "unread_count":  unread_count,
-        "total":         len(notifications),
+        "total":         total_matching,
+        "page":          page,
+        "limit":         limit,
+        "total_pages":   total_pages,
+        "has_more":      page < total_pages,
     })
 
 

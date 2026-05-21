@@ -431,3 +431,113 @@ def disconnect_expired_users():
     finally:
         db.close()
 
+
+# ─────────────────────────────────────────────────────────────────
+# TASK 5: Send Push Notification
+#
+# Called when: Any user notification is created in app.py
+#
+# What it does:
+#   1. Looks up all registered FCM tokens for the user in database.
+#   2. Sends a push notification using Firebase Admin SDK.
+#   3. Cleans up any expired/invalid tokens returned by Firebase.
+# ─────────────────────────────────────────────────────────────────
+
+_firebase_initialized = False
+
+def _init_firebase():
+    global _firebase_initialized
+    if _firebase_initialized:
+        return True
+    
+    cred_path = os.environ.get("FIREBASE_CREDENTIALS_PATH", "firebase-service-account.json")
+    if os.path.exists(cred_path):
+        try:
+            import firebase_admin
+            from firebase_admin import credentials
+            cred = credentials.Certificate(cred_path)
+            firebase_admin.initialize_app(cred)
+            _firebase_initialized = True
+            logger.info("Firebase Admin SDK initialized successfully.")
+            return True
+        except Exception as e:
+            logger.error(f"Error initializing Firebase Admin SDK: {e}")
+            return False
+    else:
+        logger.warning(f"Firebase credentials not found at '{cred_path}'. FCM push notifications will run in SIMULATION mode.")
+        return False
+
+
+@celery_app.task(name="tasks.send_push_notification")
+def send_push_notification(user_id: str, title: str, message: str, notification_type: str, meta: str = None):
+    """
+    Background task to send a push notification via FCM.
+    """
+    logger.info(f"Background task: Sending push to user {user_id} - Title: '{title}'")
+
+    from models import SessionLocal, FCMToken
+    db = SessionLocal()
+    try:
+        tokens = db.query(FCMToken).filter_by(user_id=user_id).all()
+        if not tokens:
+            logger.info(f"No FCM tokens registered for user {user_id}. Skipping push.")
+            return {"success": True, "sent": 0, "message": "No tokens"}
+
+        fcm_tokens = [t.fcm_token for t in tokens]
+        
+        # Check if Firebase is initialized
+        if _init_firebase():
+            import json
+            from firebase_admin import messaging
+            
+            # Prepare data payload (must be key-value pairs of strings)
+            data = {"type": notification_type}
+            if meta:
+                try:
+                    meta_dict = json.loads(meta)
+                    for k, v in meta_dict.items():
+                        data[k] = str(v)
+                except Exception:
+                    data["meta"] = str(meta)
+
+            multicast_msg = messaging.MulticastMessage(
+                notification=messaging.Notification(
+                    title=title,
+                    body=message,
+                ),
+                data=data,
+                tokens=fcm_tokens,
+            )
+            response = messaging.send_each_for_multicast(multicast_msg)
+            logger.info(f"FCM Multicast sent: success={response.success_count}, failure={response.failure_count}")
+
+            # Clean up failed tokens
+            if response.failure_count > 0:
+                invalid_tokens = []
+                for idx, resp in enumerate(response.responses):
+                    if not resp.success:
+                        # Unregistered or invalid tokens
+                        invalid_tokens.append(fcm_tokens[idx])
+                
+                if invalid_tokens:
+                    db.query(FCMToken).filter(FCMToken.fcm_token.in_(invalid_tokens)).delete(synchronize_session=False)
+                    db.commit()
+                    logger.info(f"Cleaned up {len(invalid_tokens)} expired/invalid FCM tokens.")
+
+            return {
+                "success": True,
+                "sent": response.success_count,
+                "failed": response.failure_count,
+            }
+        else:
+            # Simulation Mode
+            logger.info(f"[SIMULATION] FCM Push sent to {len(fcm_tokens)} devices: Title='{title}', Message='{message}', Type='{notification_type}'")
+            return {"success": True, "simulated": len(fcm_tokens)}
+
+    except Exception as e:
+        logger.error(f"Error in send_push_notification task: {e}")
+        return {"success": False, "error": str(e)}
+    finally:
+        db.close()
+
+
