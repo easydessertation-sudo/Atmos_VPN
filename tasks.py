@@ -469,7 +469,7 @@ def _init_firebase():
 
 
 @celery_app.task(name="tasks.send_push_notification")
-def send_push_notification(user_id: str, title: str, message: str, notification_type: str, meta: str = None):
+def send_push_notification(user_id: str, title: str, message: str, notification_type: str, meta: str = None, notification_id: str = None):
     """
     Background task to send a push notification via FCM.
     """
@@ -492,6 +492,8 @@ def send_push_notification(user_id: str, title: str, message: str, notification_
             
             # Prepare data payload (must be key-value pairs of strings)
             data = {"type": notification_type}
+            if notification_id:
+                data["id"] = str(notification_id)
             if meta:
                 try:
                     meta_dict = json.loads(meta)
@@ -506,6 +508,12 @@ def send_push_notification(user_id: str, title: str, message: str, notification_
                     body=message,
                 ),
                 data=data,
+                android=messaging.AndroidConfig(
+                    priority="high",
+                ),
+                apns=messaging.APNSConfig(
+                    headers={"apns-priority": "10"},
+                ),
                 tokens=fcm_tokens,
             )
             response = messaging.send_each_for_multicast(multicast_msg)

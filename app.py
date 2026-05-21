@@ -2699,7 +2699,8 @@ def create_notification(
             title=title,
             message=message,
             notification_type=notification_type,
-            meta=meta_str
+            meta=meta_str,
+            notification_id=str(n.id),
         )
     except Exception as e:
         logger.error(f"Failed to queue FCM push notification: {e}")
