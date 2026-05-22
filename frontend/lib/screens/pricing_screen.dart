@@ -29,7 +29,6 @@ class _PricingScreenState extends State<PricingScreen> {
   Future<void> _fetchPlans() async {
     try {
       final response = await ApiService.getPlans();
-      print('PLANS RESPONSE: $response'); // Debug response
       
       if (response['success'] == true) {
         if (mounted) {
@@ -54,11 +53,9 @@ class _PricingScreenState extends State<PricingScreen> {
           });
         }
       } else {
-        print('PLANS FAILED: ${response['message']}');
         if (mounted) setState(() => _isLoading = false);
       }
     } catch (e) {
-      print('PLANS ERROR: $e');
       if (mounted) setState(() => _isLoading = false);
     }
   }
@@ -71,8 +68,7 @@ class _PricingScreenState extends State<PricingScreen> {
         if (await canLaunchUrl(Uri.parse(url))) {
           await launchUrl(
             Uri.parse(url), 
-            mode: LaunchMode.inAppWebView,
-            webViewConfiguration: const WebViewConfiguration(enableJavaScript: true),
+            mode: LaunchMode.externalApplication,
           );
           
           // Workaround for Android in-app webview not supporting deep links:
@@ -90,7 +86,7 @@ class _PricingScreenState extends State<PricingScreen> {
                   behavior: SnackBarBehavior.floating,
                 ),
               );
-              Navigator.pushReplacementNamed(context, '/dashboard');
+              Navigator.pushNamedAndRemoveUntil(context, '/dashboard', (route) => false);
             }
           }
         }
@@ -190,11 +186,11 @@ class _PricingScreenState extends State<PricingScreen> {
 
                     const SizedBox(height: 32),
                     
-                    const Text(
-                      '7-Day Money Back Guarantee • Cancel Anytime',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.w600),
-                    ),
+                    // const Text(
+                    //   '7-Day Money Back Guarantee • Cancel Anytime',
+                    //   textAlign: TextAlign.center,
+                    //   style: TextStyle(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.w600),
+                    // ),
                     
                     const SizedBox(height: 40),
                     const LandingFooter(),
@@ -381,7 +377,7 @@ class _LogoHomeLink extends StatelessWidget {
             child: const Icon(Icons.shield_rounded, color: Colors.white, size: 18),
           ),
           const SizedBox(width: 10),
-          const Text('Atmos VPN', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: Colors.white)),
+          const Text('AtmosVPN', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: Colors.white)),
         ]),
       ),
     );
@@ -523,7 +519,7 @@ class _PricingFooter extends StatelessWidget {
       decoration: BoxDecoration(border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.05)))),
       child: isMobile
           ? Column(children: [
-              Text('© 2026 Atmos VPN Ltd.', style: TextStyle(color: Colors.white.withValues(alpha: 0.25), fontSize: 12)),
+              Text('© 2026 AtmosVPN Ltd.', style: TextStyle(color: Colors.white.withValues(alpha: 0.25), fontSize: 12)),
               const SizedBox(height: 10),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -544,7 +540,7 @@ class _PricingFooter extends StatelessWidget {
             ])
           : Row(
               children: [
-                Text('© 2026 Atmos VPN Ltd.', style: TextStyle(color: Colors.white.withValues(alpha: 0.25), fontSize: 12)),
+                Text('© 2026 AtmosVPN Ltd.', style: TextStyle(color: Colors.white.withValues(alpha: 0.25), fontSize: 12)),
                 const Spacer(),
                 ...['/privacy-policy', '/terms', '/cookie-policy'].map((r) => TextButton(
                   onPressed: () => Navigator.pushNamed(context, r),

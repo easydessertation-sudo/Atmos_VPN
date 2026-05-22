@@ -59,28 +59,27 @@ class _SignupScreenState extends State<SignupScreen> {
     try {
       final response = await ApiService.register(email, password, name);
 
-      if (response['success'] == true) {
+      if (response['success'] == true &&
+          response['data']?['requires_verification'] == true) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Row(
-                children: [
-                  Icon(Icons.check_circle_outline_rounded, color: Colors.white, size: 20),
-                  SizedBox(width: 12),
-                  Text('Account created! Welcome to Atmos VPN.', style: TextStyle(fontWeight: FontWeight.bold)),
-                ],
-              ),
-              backgroundColor: AppColors.success,
-              behavior: SnackBarBehavior.floating,
-            ),
+          // Navigate to email verification screen — account not created yet
+          Navigator.pushNamed(
+            context,
+            '/verify-email',
+            arguments: {'email': email},
           );
+        }
+      } else if (response['success'] == true) {
+        // Fallback: backend returned success without verification step
+        if (mounted) {
           await context.read<VPNProvider>().fetchProfile();
-          if (mounted) {
-            Navigator.pushReplacementNamed(context, '/dashboard');
-          }
+          Navigator.pushNamedAndRemoveUntil(
+              context, '/dashboard', (route) => false);
         }
       } else {
-        setState(() => _error = response['detail'] ?? response['message'] ?? 'Signup failed. Please try again.');
+        setState(() => _error = response['detail'] ??
+            response['message'] ??
+            'Signup failed. Please try again.');
       }
     } catch (e) {
       setState(() => _error = e.toString().replaceAll('Exception: ', ''));
@@ -101,15 +100,30 @@ class _SignupScreenState extends State<SignupScreen> {
       return;
     }
 
-    setState(() { _isLoading = true; _error = null; });
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
 
     try {
-      await GoogleSignIn.instance.initialize(
-        serverClientId: '755976865784-073d2g9qun1ae6eht8er591vge24gph7.apps.googleusercontent.com',
-      );
+      const serverClientId = '371315886913-fueubrgdbdj61oilt7jeh2kqid3vs4il.apps.googleusercontent.com';
+      const iosClientId = '371315886913-gftksk78hcd6r9dlkvba96mjk93d7ng6.apps.googleusercontent.com';
+      try {
+        await GoogleSignIn.instance.initialize(
+          serverClientId: serverClientId,
+          clientId: Theme.of(context).platform == TargetPlatform.iOS ? iosClientId : null,
+        );
+      } catch (e) {
+        // Initialization warning — non-fatal, continue
+      }
+
       final account = await GoogleSignIn.instance.authenticate();
+
       if (account == null) {
-        setState(() => _isLoading = false);
+        setState(() {
+          _isLoading = false;
+          _error = 'Google Sign-In returned no account. This usually happens if the user cancelled or if there is a SHA-1 fingerprint mismatch in Firebase Console (check oauth_client in google-services.json).';
+        });
         return;
       }
 
@@ -131,13 +145,16 @@ class _SignupScreenState extends State<SignupScreen> {
             SnackBar(
               content: Row(
                 children: [
-                  const Icon(Icons.check_circle_outline_rounded, color: Colors.white, size: 20),
+                  const Icon(Icons.check_circle_outline_rounded,
+                      color: Colors.white, size: 20),
                   const SizedBox(width: 12),
-                  Text(
-                    response['data']['is_new_user'] == true
-                        ? 'Account created! Welcome to Atmos VPN.'
-                        : 'Welcome back, ${response['data']['user']['full_name'] ?? ''}!',
-                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  Expanded(
+                    child: Text(
+                      response['data']['is_new_user'] == true
+                          ? 'Account created! Welcome to AtmosVPN.'
+                          : 'Welcome back, ${response['data']['user']['full_name'] ?? ''}!',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
                   ),
                 ],
               ),
@@ -146,10 +163,13 @@ class _SignupScreenState extends State<SignupScreen> {
             ),
           );
           await context.read<VPNProvider>().fetchProfile();
-          if (mounted) Navigator.pushReplacementNamed(context, '/dashboard');
+          if (mounted)
+            Navigator.pushNamedAndRemoveUntil(
+                context, '/dashboard', (route) => false);
         }
       } else {
-        setState(() => _error = response['message'] ?? 'Google sign-up failed. Please try again.');
+        setState(() => _error =
+            response['message'] ?? 'Google sign-up failed. Please try again.');
       }
     } catch (e) {
       setState(() => _error = 'Google sign-up failed: $e');
@@ -178,7 +198,11 @@ class _SignupScreenState extends State<SignupScreen> {
               const Text(
                 'Create Account',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: -1),
+                style: TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white,
+                    letterSpacing: -1),
               ).animate().fadeIn().moveY(begin: 10, end: 0),
 
               const SizedBox(height: 8),
@@ -198,9 +222,13 @@ class _SignupScreenState extends State<SignupScreen> {
                   decoration: BoxDecoration(
                     color: AppColors.warning.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: AppColors.warning.withValues(alpha: 0.2)),
+                    border: Border.all(
+                        color: AppColors.warning.withValues(alpha: 0.2)),
                   ),
-                  child: Text(_error!, style: const TextStyle(color: AppColors.warning, fontWeight: FontWeight.w600)),
+                  child: Text(_error!,
+                      style: const TextStyle(
+                          color: AppColors.warning,
+                          fontWeight: FontWeight.w600)),
                 ).animate().shake(),
 
               // Name Field
@@ -238,12 +266,21 @@ class _SignupScreenState extends State<SignupScreen> {
                   backgroundColor: AppColors.primaryBlue,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 20),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)),
                   elevation: 0,
                 ),
-                child: _isLoading 
-                  ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 3, color: Colors.white))
-                  : const Text('CREATE ACCOUNT', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, letterSpacing: 1)),
+                child: _isLoading
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 3, color: Colors.white))
+                    : const Text('CREATE ACCOUNT',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 16,
+                            letterSpacing: 1)),
               ).animate().fadeIn(delay: 400.ms),
 
               const SizedBox(height: 32),
@@ -262,7 +299,11 @@ class _SignupScreenState extends State<SignupScreen> {
                   Expanded(child: Divider(color: AppColors.divider)),
                   const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 16),
-                    child: Text("OR", style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.bold, fontSize: 12)),
+                    child: Text("OR",
+                        style: TextStyle(
+                            color: AppColors.textSecondary,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12)),
                   ),
                   Expanded(child: Divider(color: AppColors.divider)),
                 ],
@@ -271,9 +312,13 @@ class _SignupScreenState extends State<SignupScreen> {
               const SizedBox(height: 32),
 
               // Social Logins
-              _buildSocialButton('Sign up with Google', Icons.g_mobiledata_rounded, () => _handleSocialLogin('Google')),
+              _buildSocialButton(
+                  'Sign up with Google',
+                  Icons.g_mobiledata_rounded,
+                  () => _handleSocialLogin('Google')),
               const SizedBox(height: 16),
-              _buildSocialButton('Sign up with Apple', Icons.apple_rounded, () => _handleSocialLogin('Apple')),
+              _buildSocialButton('Sign up with Apple', Icons.apple_rounded,
+                  () => _handleSocialLogin('Apple')),
 
               const SizedBox(height: 48),
 
@@ -281,10 +326,14 @@ class _SignupScreenState extends State<SignupScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Text("Already have an account?", style: TextStyle(color: AppColors.textSecondary)),
+                  const Text("Already have an account?",
+                      style: TextStyle(color: AppColors.textSecondary)),
                   TextButton(
                     onPressed: () => Navigator.pop(context),
-                    child: const Text('Sign In', style: TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.w900)),
+                    child: const Text('Sign In',
+                        style: TextStyle(
+                            color: AppColors.primaryBlue,
+                            fontWeight: FontWeight.w900)),
                   ),
                 ],
               ),
@@ -316,12 +365,14 @@ class _SignupScreenState extends State<SignupScreen> {
       child: OutlinedButton.icon(
         onPressed: onTap,
         icon: Icon(icon, size: 28),
-        label: Text(label, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+        label: Text(label,
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
         style: OutlinedButton.styleFrom(
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(vertical: 16),
           side: BorderSide(color: AppColors.divider),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         ),
       ),
     );

@@ -23,37 +23,95 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
   }
 
   Future<void> _loadDevices() async {
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
       final resp = await ApiService.getDevices();
       if (resp['success'] == true) {
-        setState(() { _devices = resp['data'] ?? []; });
+        setState(() {
+          _devices = resp['data'] ?? [];
+        });
       } else {
-        setState(() { _error = resp['message'] ?? 'Failed to load devices'; });
+        setState(() {
+          _error = resp['message'] ?? 'Failed to load devices';
+        });
       }
     } catch (e) {
-      setState(() { _error = 'Cannot connect to server. Check your connection.'; });
+      setState(() {
+        _error = 'Cannot connect to server. Check your connection.';
+      });
     } finally {
       setState(() => _loading = false);
     }
   }
 
-  Future<void> _removeDevice(int id) async {
+  Future<void> _removeDevice(String id) async {
     try {
-      await ApiService.removeDevice(id);
-      await _loadDevices();
-    } catch (_) {}
+      final res = await ApiService.removeDevice(id);
+      if (res['success'] == true) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Device removed successfully.'),
+              backgroundColor: AppColors.success,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+        await _loadDevices();
+      } else {
+        if (mounted) {
+          String rawMsg = 'Failed to remove device.';
+          final msgData = res['message'];
+          if (msgData is List) {
+            rawMsg = msgData.map((e) {
+              if (e is Map) return e['msg'] ?? e.toString();
+              return e.toString();
+            }).join(', ');
+          } else if (msgData != null) {
+            rawMsg = msgData.toString();
+          }
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(rawMsg),
+              backgroundColor: AppColors.warning,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: AppColors.warning,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
   }
 
   IconData _platformIcon(String? platform) {
     switch (platform) {
-      case 'ios': return Icons.phone_iphone_rounded;
-      case 'android': return Icons.phone_android_rounded;
-      case 'windows': return Icons.desktop_windows_rounded;
-      case 'mac': return Icons.laptop_mac_rounded;
-      case 'linux': return Icons.computer_rounded;
-      case 'router': return Icons.router_rounded;
-      default: return Icons.devices_rounded;
+      case 'ios':
+        return Icons.phone_iphone_rounded;
+      case 'android':
+        return Icons.phone_android_rounded;
+      case 'windows':
+        return Icons.desktop_windows_rounded;
+      case 'mac':
+        return Icons.laptop_mac_rounded;
+      case 'linux':
+        return Icons.computer_rounded;
+      case 'router':
+        return Icons.router_rounded;
+      default:
+        return Icons.devices_rounded;
     }
   }
 
@@ -68,7 +126,8 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
           icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text('Device Management', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900)),
+        title: const Text('Device Management',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900)),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded, color: Colors.white70),
@@ -84,11 +143,17 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Icon(Icons.error_outline_rounded, color: AppColors.warning, size: 48),
+                        const Icon(Icons.error_outline_rounded,
+                            color: AppColors.warning, size: 48),
                         const SizedBox(height: 16),
-                        Text(_error!, style: const TextStyle(color: AppColors.textSecondary), textAlign: TextAlign.center),
+                        Text(_error!,
+                            style:
+                                const TextStyle(color: AppColors.textSecondary),
+                            textAlign: TextAlign.center),
                         const SizedBox(height: 24),
-                        ElevatedButton(onPressed: _loadDevices, child: const Text('Retry')),
+                        ElevatedButton(
+                            onPressed: _loadDevices,
+                            child: const Text('Retry')),
                       ],
                     ),
                   )
@@ -97,14 +162,21 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.devices_rounded, color: AppColors.textSecondary.withValues(alpha: 0.5), size: 64),
+                            Icon(Icons.devices_rounded,
+                                color: AppColors.textSecondary
+                                    .withValues(alpha: 0.5),
+                                size: 64),
                             const SizedBox(height: 16),
-                            const Text('No devices registered yet.', style: TextStyle(color: AppColors.textSecondary, fontSize: 16)),
+                            const Text('No devices registered yet.',
+                                style: TextStyle(
+                                    color: AppColors.textSecondary,
+                                    fontSize: 16)),
                           ],
                         ),
                       )
                     : ListView.separated(
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 24, vertical: 20),
                         itemCount: _devices.length,
                         separatorBuilder: (_, __) => const SizedBox(height: 12),
                         itemBuilder: (context, i) {
@@ -113,7 +185,10 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
                             device: device,
                             platformIcon: _platformIcon(device['platform']),
                             onRemove: () => _removeDevice(device['id']),
-                          ).animate().fadeIn(delay: Duration(milliseconds: i * 80)).slideX(begin: 0.1, end: 0);
+                          )
+                              .animate()
+                              .fadeIn(delay: Duration(milliseconds: i * 80))
+                              .slideX(begin: 0.1, end: 0);
                         },
                       ),
       ),
@@ -125,7 +200,10 @@ class _DeviceCard extends StatelessWidget {
   final Map<String, dynamic> device;
   final IconData platformIcon;
   final VoidCallback onRemove;
-  const _DeviceCard({required this.device, required this.platformIcon, required this.onRemove});
+  const _DeviceCard(
+      {required this.device,
+      required this.platformIcon,
+      required this.onRemove});
 
   @override
   Widget build(BuildContext context) {
@@ -159,28 +237,42 @@ class _DeviceCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(device['name'] ?? 'Unknown Device',
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15)),
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15)),
                 const SizedBox(height: 4),
                 Text('Last seen: $lastSeenStr',
-                    style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                    style: const TextStyle(
+                        color: AppColors.textSecondary, fontSize: 12)),
               ],
             ),
           ),
           IconButton(
-            icon: const Icon(Icons.delete_outline_rounded, color: AppColors.warning),
+            icon: const Icon(Icons.delete_outline_rounded,
+                color: AppColors.warning),
             onPressed: () {
               showDialog(
                 context: context,
                 builder: (ctx) => AlertDialog(
                   backgroundColor: AppColors.cardBackground,
-                  title: const Text('Remove Device', style: TextStyle(color: Colors.white)),
+                  title: const Text('Remove Device',
+                      style: TextStyle(color: Colors.white)),
                   content: Text('Remove "${device['name']}" from your account?',
                       style: const TextStyle(color: AppColors.textSecondary)),
                   actions: [
-                    TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
                     TextButton(
-                      onPressed: () { Navigator.pop(ctx); onRemove(); },
-                      child: const Text('REMOVE', style: TextStyle(color: AppColors.warning, fontWeight: FontWeight.bold)),
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text('Cancel')),
+                    TextButton(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        onRemove();
+                      },
+                      child: const Text('REMOVE',
+                          style: TextStyle(
+                              color: AppColors.warning,
+                              fontWeight: FontWeight.bold)),
                     ),
                   ],
                 ),

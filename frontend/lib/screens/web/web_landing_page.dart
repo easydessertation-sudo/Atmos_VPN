@@ -1141,7 +1141,7 @@ class _PricingSection extends StatelessWidget {
     return _Section(
       tag: 'PRICING',
       title: 'Choose your plan.',
-      subtitle: 'All plans include our full feature set. Cancel anytime.',
+      subtitle: 'All plans include our full feature set.',
       child: Wrap(
         spacing: 24,
         runSpacing: 24,

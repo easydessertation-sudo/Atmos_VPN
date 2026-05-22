@@ -43,9 +43,7 @@ class AdManager {
         onAdLoaded: (ad) {
           _appOpenAd = ad;
         },
-        onAdFailedToLoad: (error) {
-          print('AppOpenAd failed to load: $error');
-        },
+        onAdFailedToLoad: (error) {},
       ),
     );
   }
@@ -88,9 +86,7 @@ class AdManager {
           _interstitialAd = ad;
           _isInterstitialAdLoaded = true;
         },
-        onAdFailedToLoad: (error) {
-          print('InterstitialAd failed to load: $error');
-        },
+        onAdFailedToLoad: (error) {},
       ),
     );
   }

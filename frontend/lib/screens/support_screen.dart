@@ -47,55 +47,97 @@ class _SupportScreenState extends State<SupportScreen> {
 
     showDialog(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setState) {
-          return AlertDialog(
-            backgroundColor: AppColors.cardBackground,
-            title: const Text('Submit a Ticket', style: TextStyle(color: Colors.white)),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(controller: emailCtrl, style: const TextStyle(color: Colors.white), decoration: const InputDecoration(labelText: 'Email', labelStyle: TextStyle(color: AppColors.textSecondary))),
-                  TextField(controller: subjectCtrl, style: const TextStyle(color: Colors.white), decoration: const InputDecoration(labelText: 'Subject', labelStyle: TextStyle(color: AppColors.textSecondary))),
-                  DropdownButton<String>(
-                    value: category,
-                    dropdownColor: AppColors.cardBackground,
-                    items: const [
-                      DropdownMenuItem(value: 'general', child: Text('General', style: TextStyle(color: Colors.white))),
-                      DropdownMenuItem(value: 'technical', child: Text('Technical', style: TextStyle(color: Colors.white))),
-                      DropdownMenuItem(value: 'billing', child: Text('Billing', style: TextStyle(color: Colors.white))),
-                    ],
-                    onChanged: (v) => setState(() => category = v!),
-                  ),
-                  TextField(controller: messageCtrl, style: const TextStyle(color: Colors.white), maxLines: 3, decoration: const InputDecoration(labelText: 'Message', labelStyle: TextStyle(color: AppColors.textSecondary))),
-                ],
-              ),
+      builder: (ctx) => StatefulBuilder(builder: (context, setState) {
+        return AlertDialog(
+          backgroundColor: AppColors.cardBackground,
+          title: const Text('Submit a Ticket',
+              style: TextStyle(color: Colors.white)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                    controller: emailCtrl,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: const InputDecoration(
+                        labelText: 'Email',
+                        labelStyle: TextStyle(color: AppColors.textSecondary))),
+                TextField(
+                    controller: subjectCtrl,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: const InputDecoration(
+                        labelText: 'Subject',
+                        labelStyle: TextStyle(color: AppColors.textSecondary))),
+                DropdownButton<String>(
+                  value: category,
+                  dropdownColor: AppColors.cardBackground,
+                  items: const [
+                    DropdownMenuItem(
+                        value: 'general',
+                        child: Text('General',
+                            style: TextStyle(color: Colors.white))),
+                    DropdownMenuItem(
+                        value: 'technical',
+                        child: Text('Technical',
+                            style: TextStyle(color: Colors.white))),
+                    DropdownMenuItem(
+                        value: 'billing',
+                        child: Text('Billing',
+                            style: TextStyle(color: Colors.white))),
+                  ],
+                  onChanged: (v) => setState(() => category = v!),
+                ),
+                TextField(
+                    controller: messageCtrl,
+                    style: const TextStyle(color: Colors.white),
+                    maxLines: 3,
+                    decoration: const InputDecoration(
+                        labelText: 'Message',
+                        labelStyle: TextStyle(color: AppColors.textSecondary))),
+              ],
             ),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-              ElevatedButton(
-                onPressed: isSubmitting ? null : () async {
-                  setState(() => isSubmitting = true);
-                  final resp = await ApiService.submitSupportTicket(emailCtrl.text, subjectCtrl.text, messageCtrl.text, category);
-                  if (resp['success'] == true) {
-                    if (ctx.mounted) {
-                      Navigator.pop(ctx);
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ticket submitted successfully!')));
-                    }
-                  } else {
-                    setState(() => isSubmitting = false);
-                    if (ctx.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(resp['message'] ?? 'Failed to submit')));
-                    }
-                  }
-                },
-                child: isSubmitting ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Submit'),
-              ),
-            ],
-          );
-        }
-      ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: isSubmitting
+                  ? null
+                  : () async {
+                      setState(() => isSubmitting = true);
+                      final resp = await ApiService.submitSupportTicket(
+                          emailCtrl.text,
+                          subjectCtrl.text,
+                          messageCtrl.text,
+                          category);
+                      if (resp['success'] == true) {
+                        if (ctx.mounted) {
+                          Navigator.pop(ctx);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                  content:
+                                      Text('Ticket submitted successfully!')));
+                        }
+                      } else {
+                        setState(() => isSubmitting = false);
+                        if (ctx.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                              content:
+                                  Text(resp['message'] ?? 'Failed to submit')));
+                        }
+                      }
+                    },
+              child: isSubmitting
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Text('Submit'),
+            ),
+          ],
+        );
+      }),
     );
   }
 
@@ -113,7 +155,8 @@ class _SupportScreenState extends State<SupportScreen> {
             onPressed: () => Navigator.pop(context),
           ),
         ),
-        title: const Text('Help & Support', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900)),
+        title: const Text('Help & Support',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900)),
       ),
       body: AppContainer(
         child: SingleChildScrollView(
@@ -125,7 +168,12 @@ class _SupportScreenState extends State<SupportScreen> {
               const SizedBox(height: 32),
               _buildContactOptions().animate().fadeIn(delay: 200.ms),
               const SizedBox(height: 32),
-              const Text('FREQUENTLY ASKED QUESTIONS', style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w900, fontSize: 12, letterSpacing: 1.5)),
+              const Text('FREQUENTLY ASKED QUESTIONS',
+                  style: TextStyle(
+                      color: AppColors.textSecondary,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 12,
+                      letterSpacing: 1.5)),
               const SizedBox(height: 16),
               _buildFAQList().animate().fadeIn(delay: 400.ms),
               const SizedBox(height: 40),
@@ -141,7 +189,10 @@ class _SupportScreenState extends State<SupportScreen> {
       padding: const EdgeInsets.all(28),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [AppColors.primaryBlue.withValues(alpha: 0.2), Colors.transparent],
+          colors: [
+            AppColors.primaryBlue.withValues(alpha: 0.2),
+            Colors.transparent
+          ],
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
         ),
@@ -150,14 +201,20 @@ class _SupportScreenState extends State<SupportScreen> {
       ),
       child: Column(
         children: [
-          const Icon(Icons.headset_mic_rounded, color: AppColors.primaryBlue, size: 48),
+          const Icon(Icons.headset_mic_rounded,
+              color: AppColors.primaryBlue, size: 48),
           const SizedBox(height: 16),
-          const Text('How can we help?', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900)),
+          const Text('How can we help?',
+              style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 24,
+                  fontWeight: FontWeight.w900)),
           const SizedBox(height: 8),
           const Text(
             'Our team is available 24/7 to assist you with any issues or questions.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 14, height: 1.5),
+            style: TextStyle(
+                color: AppColors.textSecondary, fontSize: 14, height: 1.5),
           ),
         ],
       ),
@@ -167,14 +224,19 @@ class _SupportScreenState extends State<SupportScreen> {
   Widget _buildContactOptions() {
     return Row(
       children: [
-        Expanded(child: _contactCard('Live Chat', Icons.chat_bubble_rounded, AppColors.primaryBlue, () {})),
+        Expanded(
+            child: _contactCard('Live Chat', Icons.chat_bubble_rounded,
+                AppColors.primaryBlue, () {})),
         const SizedBox(width: 16),
-        Expanded(child: _contactCard('Email Us', Icons.mail_rounded, AppColors.neonCyan, () => _showTicketDialog(context))),
+        Expanded(
+            child: _contactCard('Email Us', Icons.mail_rounded,
+                AppColors.neonCyan, () => _showTicketDialog(context))),
       ],
     );
   }
 
-  Widget _contactCard(String title, IconData icon, Color color, VoidCallback onTap) {
+  Widget _contactCard(
+      String title, IconData icon, Color color, VoidCallback onTap) {
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
@@ -190,7 +252,11 @@ class _SupportScreenState extends State<SupportScreen> {
             children: [
               Icon(icon, color: color, size: 32),
               const SizedBox(height: 12),
-              Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15)),
+              Text(title,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 15)),
             ],
           ),
         ),
@@ -200,44 +266,58 @@ class _SupportScreenState extends State<SupportScreen> {
 
   Widget _buildFAQList() {
     if (_isLoadingFaqs) {
-      return const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator(color: AppColors.primaryBlue)));
+      return const Center(
+          child: Padding(
+              padding: EdgeInsets.all(20),
+              child: CircularProgressIndicator(color: AppColors.primaryBlue)));
     }
     if (_faqs.isEmpty) {
-      return const Text('No FAQs available right now.', style: TextStyle(color: AppColors.textSecondary));
+      return const Text('No FAQs available right now.',
+          style: TextStyle(color: AppColors.textSecondary));
     }
 
     return Column(
       children: _faqs.map((category) {
         final categoryName = category['category'] ?? 'General';
         final questions = (category['questions'] as List<dynamic>? ?? []);
-        
+
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8.0),
-              child: Text(categoryName, style: const TextStyle(color: Colors.white54, fontWeight: FontWeight.bold)),
+              child: Text(categoryName,
+                  style: const TextStyle(
+                      color: Colors.white54, fontWeight: FontWeight.bold)),
             ),
             ...questions.map((faq) => Container(
-              margin: const EdgeInsets.only(bottom: 12),
-              decoration: BoxDecoration(
-                color: AppColors.cardBackground,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppColors.divider),
-              ),
-              child: ExpansionTile(
-                shape: const RoundedRectangleBorder(side: BorderSide.none),
-                iconColor: AppColors.primaryBlue,
-                collapsedIconColor: Colors.white54,
-                title: Text(faq['q'] ?? '', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14)),
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                    child: Text(faq['a'] ?? '', style: const TextStyle(color: AppColors.textSecondary, fontSize: 13, height: 1.5)),
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(
+                    color: AppColors.cardBackground,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppColors.divider),
                   ),
-                ],
-              ),
-            )),
+                  child: ExpansionTile(
+                    shape: const RoundedRectangleBorder(side: BorderSide.none),
+                    iconColor: AppColors.primaryBlue,
+                    collapsedIconColor: Colors.white54,
+                    title: Text(faq['q'] ?? '',
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14)),
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                        child: Text(faq['a'] ?? '',
+                            style: const TextStyle(
+                                color: AppColors.textSecondary,
+                                fontSize: 13,
+                                height: 1.5)),
+                      ),
+                    ],
+                  ),
+                )),
           ],
         );
       }).toList(),

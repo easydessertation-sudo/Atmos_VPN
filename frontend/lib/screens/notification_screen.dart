@@ -16,26 +16,50 @@ class NotificationScreen extends StatefulWidget {
 class _NotificationScreenState extends State<NotificationScreen> {
   List<dynamic> _notifications = [];
   bool _isLoading = true;
+  bool _isLoadingMore = false;
+  bool _hasMore = false;
+  int _page = 1;
+  final int _limit = 20;
   bool _unreadOnly = false;
   int _unreadCount = 0;
+  final ScrollController _scrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_onScroll);
     _fetchNotifications();
   }
 
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200 &&
+        !_isLoadingMore &&
+        _hasMore) {
+      _fetchMoreNotifications();
+    }
+  }
+
   Future<void> _fetchNotifications() async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _page = 1;
+    });
     try {
-      final response = await ApiService.getNotifications(unreadOnly: _unreadOnly);
+      final response = await ApiService.getNotifications(
+          unreadOnly: _unreadOnly, page: _page, limit: _limit);
       if (response['success'] == true) {
         setState(() {
           _notifications = response['data']['notifications'] ?? [];
           _unreadCount = response['data']['unread_count'] ?? 0;
+          _hasMore = response['data']['has_more'] ?? false;
           _isLoading = false;
         });
-        // Sync with global provider to update badges
         if (mounted) {
           context.read<VPNProvider>().fetchNotifications();
         }
@@ -44,6 +68,29 @@ class _NotificationScreenState extends State<NotificationScreen> {
       }
     } catch (e) {
       setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _fetchMoreNotifications() async {
+    setState(() => _isLoadingMore = true);
+    try {
+      final nextPage = _page + 1;
+      final response = await ApiService.getNotifications(
+          unreadOnly: _unreadOnly, page: nextPage, limit: _limit);
+      if (response['success'] == true) {
+        setState(() {
+          final newNotifs = response['data']['notifications'] ?? [];
+          _notifications.addAll(newNotifs);
+          _unreadCount = response['data']['unread_count'] ?? 0;
+          _hasMore = response['data']['has_more'] ?? false;
+          _page = nextPage;
+          _isLoadingMore = false;
+        });
+      } else {
+        setState(() => _isLoadingMore = false);
+      }
+    } catch (e) {
+      setState(() => _isLoadingMore = false);
     }
   }
 
@@ -149,9 +196,18 @@ class _NotificationScreenState extends State<NotificationScreen> {
                           color: AppColors.primaryBlue,
                           backgroundColor: AppColors.cardBackground,
                           child: ListView.builder(
+                            controller: _scrollController,
                             padding: const EdgeInsets.all(20),
-                            itemCount: _notifications.length,
+                            itemCount: _notifications.length + (_hasMore ? 1 : 0),
                             itemBuilder: (context, index) {
+                              if (index == _notifications.length) {
+                                return const Center(
+                                  child: Padding(
+                                    padding: EdgeInsets.all(16.0),
+                                    child: CircularProgressIndicator(color: AppColors.primaryBlue),
+                                  ),
+                                );
+                              }
                               final notif = _notifications[index];
                               return _buildNotificationCard(notif, index);
                             },
@@ -224,30 +280,30 @@ class _NotificationScreenState extends State<NotificationScreen> {
     final icon = _getIconForType(type);
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         color: isRead ? AppColors.cardBackground : AppColors.cardBackground.withOpacity(0.6),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: isRead ? AppColors.divider : color.withOpacity(0.3)),
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16),
         child: InkWell(
           onTap: isRead ? null : () => _markAsRead(notif['id']),
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(12),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
                     color: color.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Icon(icon, color: color, size: 24),
+                  child: Icon(icon, color: color, size: 20),
                 ),
-                const SizedBox(width: 16),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -261,54 +317,57 @@ class _NotificationScreenState extends State<NotificationScreen> {
                               style: TextStyle(
                                 color: Colors.white,
                                 fontWeight: isRead ? FontWeight.w600 : FontWeight.w800,
-                                fontSize: 16,
+                                fontSize: 14,
                               ),
                             ),
                           ),
                           Text(
                             notif['time_ago'] ?? '',
-                            style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
+                            style: const TextStyle(color: AppColors.textSecondary, fontSize: 10),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 2),
                       Text(
                         notif['message'] ?? '',
                         style: TextStyle(
                           color: isRead ? AppColors.textSecondary : Colors.white70,
-                          fontSize: 14,
+                          fontSize: 12,
                         ),
                       ),
                       if (notif['coming_soon'] == true)
                         Container(
-                          margin: const EdgeInsets.only(top: 8),
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          margin: const EdgeInsets.only(top: 6),
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
                             color: AppColors.accentPurple.withOpacity(0.2),
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: const Text(
                             'COMING SOON',
-                            style: TextStyle(color: AppColors.accentPurple, fontSize: 10, fontWeight: FontWeight.bold),
+                            style: TextStyle(color: AppColors.accentPurple, fontSize: 9, fontWeight: FontWeight.bold),
                           ),
                         ),
                     ],
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 6),
                 Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     if (!isRead)
                       Container(
-                        width: 8,
-                        height: 8,
+                        width: 6,
+                        height: 6,
                         decoration: const BoxDecoration(
                           color: AppColors.primaryBlue,
                           shape: BoxShape.circle,
                         ),
                       ),
                     IconButton(
-                      icon: const Icon(Icons.close_rounded, color: AppColors.textSecondary, size: 18),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      icon: const Icon(Icons.close_rounded, color: AppColors.textSecondary, size: 16),
                       onPressed: () => _deleteNotification(notif['id']),
                     ),
                   ],

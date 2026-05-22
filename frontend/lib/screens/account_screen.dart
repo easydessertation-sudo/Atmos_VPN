@@ -2,14 +2,38 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:io' show File;
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:image_picker/image_picker.dart';
 import '../utils/design_system.dart';
 import '../utils/api_service.dart';
 import '../widgets/password_text_field.dart';
 import '../main.dart';
 import '../widgets/app_container.dart';
 
-class AccountScreen extends StatelessWidget {
+class AccountScreen extends StatefulWidget {
   const AccountScreen({super.key});
+
+  @override
+  State<AccountScreen> createState() => _AccountScreenState();
+}
+
+class _AccountScreenState extends State<AccountScreen> {
+  bool _isSocialLogin = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkLoginType();
+  }
+
+  Future<void> _checkLoginType() async {
+    final prefs = await SharedPreferences.getInstance();
+    final provider = prefs.getString('auth_provider');
+    if (provider == 'google' || provider == 'apple') {
+      if (mounted) setState(() => _isSocialLogin = true);
+    }
+  }
 
   Future<void> _handleLogout(BuildContext context) async {
     try {
@@ -19,12 +43,35 @@ class AccountScreen extends StatelessWidget {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('access_token');
     await prefs.remove('refresh_token');
+    await prefs.remove('auth_provider');
     if (context.mounted) {
       Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
     }
   }
 
-  void _showChangePasswordDialog(BuildContext context) {
+  void _showChangePasswordDialog(BuildContext context, Map<String, dynamic>? user) {
+    final provider = user?['auth_provider']?.toString().toLowerCase();
+    if (provider == 'google' || provider == 'apple') {
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppColors.cardBackground,
+          title: const Text('Social Login', style: TextStyle(color: Colors.white)),
+          content: Text(
+            'You are signed in with ${provider == 'google' ? 'Google' : 'Apple'}. Password changes are managed via your ${provider == 'google' ? 'Google' : 'Apple'} account.',
+            style: const TextStyle(color: AppColors.textSecondary),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
     final oldCtrl = TextEditingController();
     final newCtrl = TextEditingController();
     bool isSubmitting = false;
@@ -170,6 +217,367 @@ class AccountScreen extends StatelessWidget {
     );
   }
 
+  ImageProvider? _getAvatarImage(String url) {
+    if (url.isEmpty) return null;
+    if (kIsWeb || url.startsWith('http') || url.startsWith('blob:')) {
+      return NetworkImage(url);
+    } else {
+      return FileImage(File(url));
+    }
+  }
+
+  void _showImageSourceSheet(BuildContext context,
+      Function(String) onImagePicked, Function(String) onError) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.cardBackground,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 12),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.divider,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'Select Image Source',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 20),
+              ListTile(
+                leading: const Icon(Icons.camera_alt_rounded,
+                    color: AppColors.primaryBlue),
+                title: const Text('Camera',
+                    style: TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.w600)),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  final picker = ImagePicker();
+                  try {
+                    final XFile? image = await picker.pickImage(
+                      source: ImageSource.camera,
+                      imageQuality: 70,
+                      maxWidth: 800,
+                    );
+                    if (image != null) {
+                      onImagePicked(image.path);
+                    }
+                  } catch (e) {
+                    onError('Camera error: $e');
+                  }
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library_rounded,
+                    color: AppColors.primaryBlue),
+                title: const Text('Gallery',
+                    style: TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.w600)),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  final picker = ImagePicker();
+                  try {
+                    final XFile? image = await picker.pickImage(
+                      source: ImageSource.gallery,
+                      imageQuality: 70,
+                      maxWidth: 800,
+                    );
+                    if (image != null) {
+                      onImagePicked(image.path);
+                    }
+                  } catch (e) {
+                    onError('Gallery error: $e');
+                  }
+                },
+              ),
+              const SizedBox(height: 20),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showEditProfileDialog(
+      BuildContext context, Map<String, dynamic>? user) {
+    final vpn = context.read<VPNProvider>();
+    final nameCtrl = TextEditingController(text: user?['full_name'] ?? '');
+    bool isSubmitting = false;
+    String? dialogError;
+
+    String selectedAvatar = user?['avatar_url'] ?? '';
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(builder: (context, setState) {
+        return AlertDialog(
+          backgroundColor: AppColors.cardBackground,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+            side: const BorderSide(color: AppColors.divider, width: 1),
+          ),
+          title: const Row(
+            children: [
+              Icon(Icons.edit_rounded, color: AppColors.primaryBlue, size: 24),
+              SizedBox(width: 10),
+              Text(
+                'Edit Profile',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 20,
+                ),
+              ),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (dialogError != null)
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: AppColors.warning.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                          color: AppColors.warning.withValues(alpha: 0.3)),
+                    ),
+                    child: Text(dialogError!,
+                        style: const TextStyle(
+                            color: AppColors.warning, fontSize: 12)),
+                  ),
+                Center(
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: LinearGradient(
+                        colors: [AppColors.primaryBlue, AppColors.neonCyan],
+                      ),
+                    ),
+                    child: CircleAvatar(
+                      radius: 44,
+                      backgroundColor: AppColors.background,
+                      backgroundImage: _getAvatarImage(selectedAvatar),
+                      child: selectedAvatar.isEmpty
+                          ? const Icon(Icons.person_rounded,
+                              size: 44, color: Colors.white)
+                          : null,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Center(
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.click,
+                    child: TextButton.icon(
+                      onPressed: () {
+                        _showImageSourceSheet(context, (path) {
+                          setState(() {
+                            selectedAvatar = path;
+                          });
+                        }, (errorMsg) {
+                          setState(() {
+                            dialogError = errorMsg;
+                          });
+                        });
+                      },
+                      icon: const Icon(Icons.cloud_upload_rounded,
+                          color: AppColors.primaryBlue),
+                      label: const Text(
+                        'Upload Image',
+                        style: TextStyle(
+                          color: AppColors.primaryBlue,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 14,
+                        ),
+                      ),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 20, vertical: 12),
+                        backgroundColor:
+                            AppColors.primaryBlue.withValues(alpha: 0.1),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  'FULL NAME',
+                  style: TextStyle(
+                    color: AppColors.textSecondary,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 11,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: nameCtrl,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold),
+                  decoration: InputDecoration(
+                    prefixIcon: const Icon(Icons.person_outline_rounded,
+                        color: AppColors.textSecondary, size: 20),
+                    hintText: 'Enter your full name',
+                    hintStyle: const TextStyle(
+                        color: AppColors.textSecondary, fontSize: 14),
+                    filled: true,
+                    fillColor: AppColors.background,
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 14),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: AppColors.divider),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide:
+                          const BorderSide(color: AppColors.primaryBlue),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actionsPadding:
+              const EdgeInsets.only(left: 24, right: 24, bottom: 24),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text(
+                'Cancel',
+                style: TextStyle(
+                  color: AppColors.textSecondary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: isSubmitting
+                  ? null
+                  : () async {
+                      if (nameCtrl.text.trim().isEmpty) {
+                        setState(
+                            () => dialogError = 'Full name cannot be empty.');
+                        return;
+                      }
+
+                      setState(() {
+                        isSubmitting = true;
+                        dialogError = null;
+                      });
+
+                      // Call the real API
+                      final isUrl = selectedAvatar.startsWith('http') || selectedAvatar.startsWith('https');
+                      final avatarPath = isUrl ? null : (selectedAvatar.isNotEmpty ? selectedAvatar : null);
+                      
+                      final resp = await ApiService.updateProfile(
+                        fullName: nameCtrl.text.trim(),
+                        avatarPath: avatarPath,
+                      );
+
+                      if (resp['success'] == true) {
+                        // 1. Stop buffering
+                        setState(() {
+                          isSubmitting = false;
+                        });
+
+                        // 2. Pop the dialog immediately while the context is completely safe
+                        if (context.mounted) {
+                          Navigator.of(context, rootNavigator: true).pop();
+                          
+                          // Show success message
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Row(
+                                children: [
+                                  Icon(Icons.check_circle_outline_rounded,
+                                      color: Colors.white, size: 18),
+                                  SizedBox(width: 10),
+                                  Text('Profile updated successfully!',
+                                      style:
+                                          TextStyle(fontWeight: FontWeight.bold)),
+                                ],
+                              ),
+                              backgroundColor: AppColors.success,
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        }
+
+                        // 3. Update the global state last (this rebuilds the background UI)
+                        final updatedUser = resp['data']?['user'];
+                        if (updatedUser != null && updatedUser['avatar_url'] != null) {
+                           vpn.updateProfileLocal(
+                             fullName: updatedUser['full_name'],
+                             avatarUrl: updatedUser['avatar_url'],
+                           );
+                        } else {
+                           vpn.updateProfileLocal(
+                             fullName: nameCtrl.text.trim(),
+                             avatarUrl: isUrl ? selectedAvatar : '',
+                           );
+                        }
+                      } else {
+                        setState(() {
+                          isSubmitting = false;
+                          dialogError = resp['message'] ?? 'Failed to update profile.';
+                        });
+                      }
+                    },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primaryBlue,
+                foregroundColor: Colors.white,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                elevation: 0,
+              ),
+              child: isSubmitting
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text(
+                      'Save Changes',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+            ),
+          ],
+        );
+      }),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final vpn = context.watch<VPNProvider>();
@@ -180,13 +588,7 @@ class AccountScreen extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: MouseRegion(
-          cursor: SystemMouseCursors.click,
-          child: IconButton(
-            icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
-            onPressed: () => Navigator.pop(context),
-          ),
-        ),
+        automaticallyImplyLeading: false,
         title: const Text('My Account',
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900)),
       ),
@@ -195,7 +597,7 @@ class AccountScreen extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
           child: Column(
             children: [
-              _buildProfileHeader(user)
+              _buildProfileHeader(context, user)
                   .animate()
                   .fadeIn()
                   .scale(begin: const Offset(0.9, 0.9)),
@@ -217,7 +619,7 @@ class AccountScreen extends StatelessWidget {
                   _menuItem('Security Checkup', Icons.verified_user_rounded,
                       () => Navigator.pushNamed(context, '/security')),
                   _menuItem('Change Password', Icons.password_rounded,
-                      () => _showChangePasswordDialog(context)),
+                      () => _showChangePasswordDialog(context, user)),
                 ],
               ).animate().fadeIn(delay: 400.ms),
               const SizedBox(height: 24),
@@ -227,14 +629,14 @@ class AccountScreen extends StatelessWidget {
                   _menuItem('Notifications', Icons.notifications_rounded,
                       () => Navigator.pushNamed(context, '/notifications')),
                   _menuItem('Privacy Settings', Icons.fingerprint_rounded,
-                      () => Navigator.pushNamed(context, '/privacy-policy')),
+                      () => Navigator.pushNamed(context, '/privacy')),
                 ],
               ).animate().fadeIn(delay: 500.ms),
               const SizedBox(height: 48),
               _buildLogoutButton(context).animate().fadeIn(delay: 600.ms),
               const SizedBox(height: 20),
               const Text(
-                'Atmos VPN Version 1.0.0 (Build 45)',
+                'AtmosVPN Version 1.0.0 (Build 45)',
                 style: TextStyle(
                     color: AppColors.textSecondary,
                     fontSize: 11,
@@ -248,37 +650,47 @@ class AccountScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildProfileHeader(Map<String, dynamic>? user) {
-    final name = user?['username'] ?? user?['email']?.split('@')[0] ?? 'User';
+  Widget _buildProfileHeader(BuildContext context, Map<String, dynamic>? user) {
+    final name = user?['full_name'] ?? user?['email']?.split('@')[0] ?? 'User';
     final email = user?['email'] ?? 'No email associated';
+    final avatarUrl = user?['avatar_url']?.toString() ?? '';
 
     return Column(
       children: [
-        Stack(
-          alignment: Alignment.bottomRight,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: LinearGradient(
-                    colors: [AppColors.primaryBlue, AppColors.neonCyan]),
-              ),
-              child: const CircleAvatar(
-                radius: 50,
-                backgroundColor: AppColors.background,
-                child:
-                    Icon(Icons.person_rounded, size: 50, color: Colors.white),
-              ),
+        GestureDetector(
+          onTap: () => _showEditProfileDialog(context, user),
+          child: MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: Stack(
+              alignment: Alignment.bottomRight,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                        colors: [AppColors.primaryBlue, AppColors.neonCyan]),
+                  ),
+                  child: CircleAvatar(
+                    radius: 50,
+                    backgroundColor: AppColors.background,
+                    backgroundImage: _getAvatarImage(avatarUrl),
+                    child: avatarUrl.isEmpty
+                        ? const Icon(Icons.person_rounded,
+                            size: 50, color: Colors.white)
+                        : null,
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: const BoxDecoration(
+                      color: AppColors.success, shape: BoxShape.circle),
+                  child: const Icon(Icons.edit_rounded,
+                      size: 12, color: Colors.white),
+                ),
+              ],
             ),
-            Container(
-              padding: const EdgeInsets.all(6),
-              decoration: const BoxDecoration(
-                  color: AppColors.success, shape: BoxShape.circle),
-              child:
-                  const Icon(Icons.edit_rounded, size: 12, color: Colors.white),
-            ),
-          ],
+          ),
         ),
         const SizedBox(height: 20),
         Text(
@@ -351,7 +763,8 @@ class AccountScreen extends StatelessWidget {
             MouseRegion(
               cursor: SystemMouseCursors.click,
               child: ElevatedButton(
-                onPressed: () => Navigator.pushNamed(context, '/pricing'),
+                onPressed: () =>
+                    Navigator.pushNamed(context, '/account/pricing'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primaryBlue,
                   foregroundColor: Colors.white,

@@ -10,8 +10,8 @@ class DashboardScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return const Responsive(
       mobile: HomeScreen(),
-      tablet: WebDashboard(), // Tablet can use web layout with adjustments
-      desktop: WebDashboard(),
+      tablet: HomeScreen(),
+      desktop: HomeScreen(),
     );
   }
 }

@@ -15,11 +15,14 @@
     <!-- Required on Android 13+ for VPN connected/disconnected notifications -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 
+    <!-- Required for taking profile photos -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+
     <!-- Required for WireGuard to manage network interfaces -->
     <uses-permission android:name="android.permission.MANAGE_OWN_CALLS"/>
 
     <application
-        android:label="Atmos VPN"
+        android:label="AtmosVPN"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="false"
@@ -53,6 +56,16 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- Set default FCM notification channel -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="atmos_vpn_notifications" />
+
+        <!-- Set default FCM notification icon -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@mipmap/ic_launcher" />
 
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"

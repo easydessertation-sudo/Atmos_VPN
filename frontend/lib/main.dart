@@ -12,6 +12,7 @@ import 'package:cryptography/cryptography.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'utils/design_system.dart';
 import 'utils/api_service.dart';
 import 'utils/ad_manager.dart';
@@ -28,22 +29,36 @@ import 'screens/speed_test.dart';
 import 'screens/account_screen.dart';
 import 'screens/support_screen.dart';
 import 'screens/pricing_screen.dart';
+import 'screens/app_pricing_screen.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/signup_screen.dart';
+import 'screens/email_verification_screen.dart';
 import 'screens/splash_screen.dart';
 import 'screens/trial_offer_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/device_management_screen.dart';
 import 'screens/billing_screen.dart';
 import 'screens/notification_screen.dart';
+import 'screens/privacy_screen.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+// Top-level FCM background handler - must be defined here at the top level
+// of main.dart so the Android background isolate can find it.
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  // Delegate all handling to the NotificationService
+  await notificationBackgroundHandler(message);
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   if (!kIsWeb) {
     await Firebase.initializeApp();
+    // CRITICAL: Must be registered here in main() — before runApp() —
+    // so Android can spin up the background isolate when the app is killed.
+    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
     await MobileAds.instance.initialize();
     AdManager.loadAppOpenAd();
     AdManager.loadInterstitialAd();
@@ -105,7 +120,7 @@ class _AtmosVPNAppState extends State<AtmosVPNApp> with WidgetsBindingObserver {
   }
 
   void _handleDeepLink(Uri uri) {
-    if (uri.scheme == 'atmosvpn' && uri.path.contains('/payment/success')) {
+    if (uri.scheme == 'atmosvpn' && (uri.path.contains('/payment/success') || uri.path.contains('/payment-success'))) {
       final context = navigatorKey.currentContext;
       if (context != null) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -119,7 +134,8 @@ class _AtmosVPNAppState extends State<AtmosVPNApp> with WidgetsBindingObserver {
         // Refresh profile to get the new plan status
         context.read<VPNProvider>().fetchProfile();
         // Redirect back to dashboard
-        Navigator.pushReplacementNamed(context, '/dashboard');
+        Navigator.pushNamedAndRemoveUntil(
+            context, '/dashboard', (route) => false);
       }
     }
   }
@@ -145,12 +161,12 @@ class _AtmosVPNAppState extends State<AtmosVPNApp> with WidgetsBindingObserver {
       navigatorKey: navigatorKey,
       debugShowCheckedModeBanner: false,
       theme: AppDesign.darkTheme,
-      initialRoute: '/splash',
+      initialRoute: '/',
       routes: {
+        '/': (context) => kIsWeb ? const WebLandingPage() : const SplashScreen(),
         '/splash': (context) => const SplashScreen(),
         '/trial': (context) => const TrialOfferScreen(),
         // ── Web Marketing ──────────────────────────────────────────
-        '/': (context) => const WebLandingPage(),
         '/features': (context) => const FeaturesPage(),
         '/how-vpn-works': (context) => const HowVpnWorksPage(),
         '/why': (context) => const HowVpnWorksPage(),
@@ -171,6 +187,7 @@ class _AtmosVPNAppState extends State<AtmosVPNApp> with WidgetsBindingObserver {
         '/use-cases/privacy': (context) =>
             const FooterContentPage(data: FooterContentCatalog.privacy),
         // Legal
+        '/privacy': (context) => const PrivacyScreen(),
         '/privacy-policy': (context) => const PrivacyPolicyPage(),
         '/terms': (context) => const TermsPage(),
         '/no-logs-audit': (context) =>
@@ -185,6 +202,7 @@ class _AtmosVPNAppState extends State<AtmosVPNApp> with WidgetsBindingObserver {
         '/onboarding': (context) => const OnboardingScreen(),
         '/login': (context) => const LoginScreen(),
         '/signup': (context) => const SignupScreen(),
+        '/verify-email': (context) => const EmailVerificationScreen(),
         // ── App (post-login, responsive) ───────────────────────────
         '/home': (context) => const DashboardScreen(),
         '/dashboard': (context) => const DashboardScreen(),
@@ -194,7 +212,7 @@ class _AtmosVPNAppState extends State<AtmosVPNApp> with WidgetsBindingObserver {
         '/security': (context) => const SecurityCenterScreen(),
         '/speed': (context) => const SpeedTestScreen(),
         '/account': (context) => const AccountScreen(),
-        '/account/pricing': (context) => const PricingScreen(),
+        '/account/pricing': (context) => const AppPricingScreen(),
         '/account/devices': (context) => const DeviceManagementScreen(),
         '/account/billing': (context) => const BillingScreen(),
         '/notifications': (context) => const NotificationScreen(),
@@ -274,7 +292,8 @@ class VPNProvider with ChangeNotifier {
   Map<String, dynamic>? _selectedServer;
   List<dynamic> _servers = [];
   String? _lastError;
-  int _remainingSeconds = 45 * 60;
+  int _remainingSeconds = 0; // Safe default — real value loaded from backend in _syncSessionTime()
+  bool _isSessionTimeLoaded = false; // False until first backend sync completes
   Timer? _sessionTimer;
   Timer? _notifTimer;
   int _unreadCount = 0;
@@ -291,6 +310,7 @@ class VPNProvider with ChangeNotifier {
     'auto_connect_wifi': false,
   };
   bool _isFetchingSecurity = false;
+  bool _triggerSessionExpired = false;
 
   bool get isConnected => _isConnected;
   String get status => _status;
@@ -299,6 +319,7 @@ class VPNProvider with ChangeNotifier {
   int get remainingSeconds => _remainingSeconds;
   int get remainingMinutes => _remainingSeconds ~/ 60;
   bool get hasUpgraded => _hasUpgraded;
+  bool get isSessionTimeLoaded => _isSessionTimeLoaded;
   int get unreadCount => _unreadCount;
   Map<String, dynamic>? get userData => _userData;
   Map<String, dynamic>? get selectedServer => _selectedServer;
@@ -306,27 +327,50 @@ class VPNProvider with ChangeNotifier {
   String? get lastError => _lastError;
   Map<String, bool> get securityFeatures => _securityFeatures;
   bool get isFetchingSecurity => _isFetchingSecurity;
+  bool get triggerSessionExpired => _triggerSessionExpired;
+
+  void triggerSessionExpiredDialog() {
+    _triggerSessionExpired = true;
+    notifyListeners();
+    Future.microtask(() {
+      _triggerSessionExpired = false;
+    });
+  }
 
   Future<void> _syncSessionTime() async {
-    if (!_isFreeUser) return;
+    if (!_isFreeUser) {
+      _isSessionTimeLoaded = true;
+      notifyListeners();
+      return;
+    }
     try {
       final response = await ApiService.getSessionTime();
       if (response['success'] == true) {
         _remainingSeconds = response['data']['remaining_seconds'] ?? 0;
-        notifyListeners();
       }
-    } catch (_) {}
+    } catch (_) {
+      // On network failure keep 0 — safer than showing wrong time
+    } finally {
+      _isSessionTimeLoaded = true;
+      notifyListeners();
+    }
   }
 
   VPNProvider() {
     _init();
     _sessionTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (_isConnected && _isFreeUser) {
-        if (_remainingSeconds > 0) {
-          _remainingSeconds--;
-          notifyListeners();
-        } else {
-          _handleSessionExpiry();
+        final reqPlan =
+            _selectedServer?['required_plan']?.toString().toLowerCase() ??
+                'free';
+        final isStarterServer = reqPlan == 'starter';
+        if (isStarterServer) {
+          if (_remainingSeconds > 0) {
+            _remainingSeconds--;
+            notifyListeners();
+          } else {
+            _handleSessionExpiry();
+          }
         }
       }
     });
@@ -554,14 +598,14 @@ class VPNProvider with ChangeNotifier {
         RegExp(r'PersistentKeepalive\s*=\s*[^\n]*\n?'), '');
 
     // 5. Inject Interface settings
-    // MTU 1200 is extremely safe for all networks.
+    // MTU 1280 is the absolute safest MTU because it is the exact minimum required for IPv6.
     finalConfig = finalConfig.replaceFirst('[Interface]',
-        '[Interface]\nPrivateKey = ${privateKey.trim()}\nDNS = $dnsToInject\nMTU = 1200');
+        '[Interface]\nPrivateKey = ${privateKey.trim()}\nDNS = $dnsToInject\nMTU = 1280');
 
     // 6. Inject Peer settings
-    // Use split default route instead of 0.0.0.0/0 to avoid Android routing
-    // table conflicts that cause "connected but no internet".
-    const allowedIPs = '0.0.0.0/1, 128.0.0.0/1';
+    // We use a split default route to avoid Android routing table conflicts.
+    // CRITICAL: We MUST include ::/1 and 8000::/1 to route IPv6 traffic, otherwise mobile carriers will stall.
+    const allowedIPs = '0.0.0.0/1, 128.0.0.0/1, ::/1, 8000::/1';
     if (!finalConfig.contains('AllowedIPs')) {
       finalConfig = finalConfig.replaceFirst('[Peer]',
           '[Peer]\nAllowedIPs = $allowedIPs\nPersistentKeepalive = 25');
@@ -759,7 +803,7 @@ class VPNProvider with ChangeNotifier {
   Future<void> _handleSessionExpiry() async {
     await disconnect();
     _remainingSeconds = 0;
-    notifyListeners();
+    triggerSessionExpiredDialog();
   }
 
   Future<void> watchAd() async {
@@ -776,10 +820,32 @@ class VPNProvider with ChangeNotifier {
 
   // ── Connect ────────────────────────────────────────────────────────────────
   Future<void> connect(String serverId, {String mode = 'standard'}) async {
+    final server = _servers.firstWhere(
+      (s) => s['id']?.toString() == serverId,
+      orElse: () => _selectedServer,
+    );
+    final reqPlan =
+        server?['required_plan']?.toString().toLowerCase() ?? 'free';
+    final userPlan = _userData?['plan']?.toString().toLowerCase() ?? 'free';
+
+    final isStarterServer = reqPlan == 'starter';
+    final bool needsAd =
+        userPlan == 'free' && isStarterServer && _remainingSeconds <= 0;
+
+    if (needsAd) {
+      // Do not auto-reward. Trigger the popup event.
+      triggerSessionExpiredDialog();
+      return;
+    }
+
+    return _actualConnect(serverId, mode: mode);
+  }
+
+  Future<void> _actualConnect(String serverId,
+      {String mode = 'standard'}) async {
     _userManuallyDisconnected = false; // Reset the manual disconnect flag
     // 1. Force a clean state by disconnecting any existing session
     await disconnect();
-    await Future.delayed(const Duration(milliseconds: 500));
 
     _status = 'Provisioning...';
     _lastError = null;
@@ -795,9 +861,6 @@ class VPNProvider with ChangeNotifier {
         final kp = await _getOrCreateKeyPair();
         privateKey = kp.$1;
         publicKey = kp.$2;
-        debugPrint('[VPN] Generated Public Key: $publicKey');
-        debugPrint(
-            '[VPN] Please ensure this key is added to the server peer list.');
       }
 
       // 2. Revoke any existing stale config for this server
@@ -819,13 +882,10 @@ class VPNProvider with ChangeNotifier {
           final cfgServerId = cfg['server_id']?.toString();
           final cfgId = cfg['config_id']?.toString();
           if (cfgServerId == serverId && cfgId != null) {
-            print('[VPN] Revoking stale config $cfgId for server $serverId');
             await ApiService.revokeVpnConfig(cfgId);
           }
         }
-      } catch (e) {
-        print('[VPN] Could not revoke old configs (non-fatal): $e');
-      }
+      } catch (e) {}
 
       // 3. Provision — backend returns WireGuard .conf
       final provResponse = await ApiService.provisionVpn(
@@ -840,7 +900,6 @@ class VPNProvider with ChangeNotifier {
                     ? 'ios'
                     : 'unknown',
       );
-      print('[VPN] PROVISION: $provResponse');
 
       if (provResponse['success'] != true) {
         _status = 'Provisioning Failed';
@@ -871,8 +930,6 @@ class VPNProvider with ChangeNotifier {
 
       _status = 'Finalizing...';
       notifyListeners();
-      await Future.delayed(
-          const Duration(seconds: 2)); // Wait for physical server to reload
 
       _status = 'Connecting...';
       notifyListeners();
@@ -898,12 +955,8 @@ class VPNProvider with ChangeNotifier {
             serverAddress = (epMatch.group(1) ?? serverAddress).trim();
           }
 
-          debugPrint('[VPN] Connecting to Server Address: $serverAddress');
-          debugPrint('[VPN] Full Config Length: ${fullConfig.length}');
-
           if (!fullConfig.contains('Address')) {
-            debugPrint(
-                '[VPN] WARNING: Config is missing "Address" line! This will cause no internet.');
+            // Missing address line
           }
 
           // Ensure clean private key
@@ -914,12 +967,9 @@ class VPNProvider with ChangeNotifier {
           // 4b. Notify Backend to ACTIVATE the session and add peer to server
           try {
             await ApiService.connect(serverId, mode: mode);
-            debugPrint('[VPN] Session activated on backend.');
             await Future.delayed(const Duration(
                 seconds: 2)); // Give server time to update iptables/wg
-          } catch (e) {
-            debugPrint('[VPN] Session activation warning: $e');
-          }
+          } catch (e) {}
 
           // 5. Start the Native Tunnel
           // Retry loop: on Android, the first call may show the VPN permission dialog.
@@ -933,7 +983,6 @@ class VPNProvider with ChangeNotifier {
                 providerBundleIdentifier: 'com.atmosvpn.app.network-extension',
               );
               vpnStarted = true;
-              debugPrint('[VPN] startVpn call succeeded (attempt $attempt).');
             } on Exception catch (e) {
               final msg = e.toString();
               if (msg.contains('Permissions are not given') ||
@@ -941,8 +990,7 @@ class VPNProvider with ChangeNotifier {
                 if (attempt == 1) {
                   // The Android "Allow VPN" dialog was shown. Give the user
                   // 5 seconds to approve it, then retry.
-                  debugPrint(
-                      '[VPN] VPN permission dialog shown. Waiting for user approval...');
+                  // 5 seconds to approve it, then retry.
                   _status = 'Awaiting Permission...';
                   notifyListeners();
                   await Future.delayed(const Duration(seconds: 5));
@@ -953,10 +1001,8 @@ class VPNProvider with ChangeNotifier {
                       'VPN permission is required. Please tap Connect and approve the VPN permission dialog when it appears.';
                   _isConnected = false;
                   notifyListeners();
-                  debugPrint('[VPN] User denied VPN permission.');
                 }
               } else {
-                debugPrint('[VPN] NATIVE START ERROR: $e');
                 _status = 'Disconnected';
                 _lastError = 'Failed to start VPN tunnel. Please try again.';
                 _isConnected = false;
@@ -981,7 +1027,6 @@ class VPNProvider with ChangeNotifier {
         mode: mode,
         protocol: 'wireguard',
       );
-      print('[VPN] CONNECT: $connectResp');
       if (connectResp['success'] == true) {
         final sd = connectResp['data']?['server'];
         _isConnected = true;
@@ -998,7 +1043,6 @@ class VPNProvider with ChangeNotifier {
         notifyListeners();
       }
     } catch (e) {
-      print('[VPN] CONNECT ERROR: $e');
       _status = 'Connection Failed';
       _lastError = e.toString().replaceAll('Exception: ', '');
       _isConnected = false;
@@ -1025,10 +1069,20 @@ class VPNProvider with ChangeNotifier {
   void toggleConnection() {
     if (_isConnected) {
       _userManuallyDisconnected = true;
-      disconnect();
+      if (_isFreeUser) {
+        AdManager.showInterstitialAd(onAdDismissed: () {
+          disconnect();
+        });
+      } else {
+        disconnect();
+      }
     } else {
-      if (_isFreeUser && _remainingSeconds <= 0) {
-        notifyListeners(); // This will trigger the alert box in HomeScreen
+      final reqPlan =
+          _selectedServer?['required_plan']?.toString().toLowerCase() ?? 'free';
+      final isStarterServer = reqPlan == 'starter';
+
+      if (_isFreeUser && isStarterServer && _remainingSeconds <= 0) {
+        triggerSessionExpiredDialog();
         return;
       }
 
@@ -1041,7 +1095,13 @@ class VPNProvider with ChangeNotifier {
 
       final serverId = _selectedServer!['id']?.toString();
       if (serverId != null) {
-        connect(serverId);
+        if (_isFreeUser) {
+          AdManager.showInterstitialAd(onAdDismissed: () {
+            connect(serverId);
+          });
+        } else {
+          connect(serverId);
+        }
       } else {
         _status = 'No servers available';
         notifyListeners();
@@ -1053,6 +1113,20 @@ class VPNProvider with ChangeNotifier {
   void setUpgrade(bool val) {
     _hasUpgraded = val;
     notifyListeners();
+  }
+
+  void updateProfileLocal({String? fullName, String? avatarUrl}) {
+    if (_userData != null) {
+      final updatedData = Map<String, dynamic>.from(_userData!);
+      if (fullName != null) {
+        updatedData['full_name'] = fullName;
+      }
+      if (avatarUrl != null) {
+        updatedData['avatar_url'] = avatarUrl;
+      }
+      _userData = updatedData;
+      notifyListeners();
+    }
   }
 
   @override

@@ -91,7 +91,7 @@
 			<string>Editor</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>com.googleusercontent.apps.755976865784-65qp3154btjjj2sov8tkme8khcuho0p9</string>
+				<string>com.googleusercontent.apps.371315886913-gftksk78hcd6r9dlkvba96mjk93d7ng6</string>
 			</array>
 		</dict>
 		<dict>
@@ -105,5 +105,11 @@
 			</array>
 		</dict>
 	</array>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Atmos VPN needs access to your gallery to let you upload a profile photo.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Atmos VPN needs access to your camera to let you take a profile photo.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Atmos VPN needs access to your microphone for capturing video if needed.</string>
 </dict>
 </plist>

@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:provider/provider.dart';
 import '../utils/design_system.dart';
 import '../widgets/app_container.dart';
 import '../utils/api_service.dart';
+import '../utils/ad_manager.dart';
+import '../main.dart';
 
 class SpeedTestScreen extends StatefulWidget {
   const SpeedTestScreen({super.key});
@@ -53,16 +56,20 @@ class _SpeedTestScreenState extends State<SpeedTestScreen> with TickerProviderSt
   }
 
   void _runTest() async {
-    setState(() {
-      _isTesting = true;
-      _speed = 0.0;
-      _progress = 0.0;
-      _maxSpeed = 200.0;
-      _uploadSpeed = '--';
-      _ping = '--';
-      _jitter = '--';
-      _error = null;
-    });
+    final vpn = context.read<VPNProvider>();
+    final plan = vpn.userData?['plan']?.toString() ?? 'free';
+
+    void startRealTest() async {
+      setState(() {
+        _isTesting = true;
+        _speed = 0.0;
+        _progress = 0.0;
+        _maxSpeed = 200.0;
+        _uploadSpeed = '--';
+        _ping = '--';
+        _jitter = '--';
+        _error = null;
+      });
 
     // Start API call immediately (runs in background)
     final apiFuture = ApiService.runSpeedTest();
@@ -81,7 +88,6 @@ class _SpeedTestScreenState extends State<SpeedTestScreen> with TickerProviderSt
 
     try {
       final response = await apiFuture;
-      print('SPEED TEST RESPONSE: $response');
       if (response['success'] == true) {
         final data = response['data'];
         final realSpeed = (data['download_mbps'] as num? ?? 0).toDouble();
@@ -108,7 +114,6 @@ class _SpeedTestScreenState extends State<SpeedTestScreen> with TickerProviderSt
         throw Exception(response['message'] ?? 'Speed test failed');
       }
     } catch (e) {
-      print('SPEED TEST ERROR: $e');
       if (mounted) {
         setState(() {
           _progress = 0.0;
@@ -122,6 +127,13 @@ class _SpeedTestScreenState extends State<SpeedTestScreen> with TickerProviderSt
     } finally {
       if (mounted) setState(() => _isTesting = false);
     }
+    } // End startRealTest
+
+    if (plan == 'free') {
+      AdManager.showInterstitialAd(onAdDismissed: startRealTest);
+    } else {
+      startRealTest();
+    }
   }
 
   @override
@@ -131,13 +143,7 @@ class _SpeedTestScreenState extends State<SpeedTestScreen> with TickerProviderSt
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: MouseRegion(
-          cursor: SystemMouseCursors.click,
-          child: IconButton(
-            icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
-            onPressed: () => Navigator.pop(context),
-          ),
-        ),
+        automaticallyImplyLeading: false,
         title: const Text('Speed Test', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900)),
       ),
       body: AppContainer(

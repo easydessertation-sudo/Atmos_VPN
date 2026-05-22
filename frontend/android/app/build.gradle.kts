@@ -7,7 +7,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.secure_vpn"
+    namespace = "com.atmosvpn.app"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -23,7 +23,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.secure_vpn"
+        applicationId = "com.atmosvpn.app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
@@ -32,11 +32,18 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = file("release-key.jks")
+            storePassword = "atmosvpn123"
+            keyAlias = "my-key-alias"
+            keyPassword = "atmosvpn123"
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 }

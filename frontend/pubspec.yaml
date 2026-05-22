@@ -1,5 +1,5 @@
-name: secure_vpn
-description: A new Flutter project for Atmos VPN.
+name: AtmosVPN
+description: A new Flutter project for AtmosVPN.
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -28,6 +28,7 @@ dependencies:
   firebase_core: ^4.7.0
   firebase_messaging: ^16.2.0
   app_links: ^7.0.0
+  image_picker: ^1.2.2
 
 dev_dependencies:
   flutter_test:

@@ -65,7 +65,7 @@ class _UpgradeBannerState extends State<UpgradeBanner> {
                     ),
                     const SizedBox(height: 4),
                     const Text(
-                      'Watch a 30s ad to unlock fastest servers for 2 hours.',
+                      'Watch a 30s ad to unlock fastest servers for 45 minutes.',
                       style: TextStyle(
                         color: AppColors.textSecondary,
                         fontSize: 12,

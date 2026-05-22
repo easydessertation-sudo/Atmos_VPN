@@ -7,7 +7,8 @@ import '../utils/design_system.dart';
 import '../widgets/app_container.dart';
 
 class ServerListScreen extends StatefulWidget {
-  const ServerListScreen({super.key});
+  final VoidCallback? onSelectServer;
+  const ServerListScreen({super.key, this.onSelectServer});
 
   @override
   State<ServerListScreen> createState() => _ServerListScreenState();
@@ -42,7 +43,6 @@ class _ServerListScreenState extends State<ServerListScreen>
         setState(() => _isLoading = false);
       }
     } catch (e) {
-      print('SERVER LOAD ERROR: $e');
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -110,17 +110,6 @@ class _ServerListScreenState extends State<ServerListScreen>
                 padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
                 child: Row(
                   children: [
-                    IconButton(
-                      icon: const Icon(Icons.arrow_back_rounded,
-                          color: Colors.white),
-                      style: IconButton.styleFrom(
-                        backgroundColor: AppColors.cardBackground,
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12)),
-                      ),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                    const SizedBox(width: 16),
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -146,8 +135,8 @@ class _ServerListScreenState extends State<ServerListScreen>
                         color: AppColors.primaryBlue.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: const Icon(Icons.map_outlined,
-                          color: AppColors.primaryBlue),
+                      // child: const Icon(Icons.map_outlined,
+                      //     color: AppColors.primaryBlue),
                     ),
                   ],
                 ),
@@ -156,7 +145,7 @@ class _ServerListScreenState extends State<ServerListScreen>
 
             // Search Bar
             Padding(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               child: Container(
                 decoration: BoxDecoration(
                   color: AppColors.cardBackground,
@@ -174,7 +163,7 @@ class _ServerListScreenState extends State<ServerListScreen>
                     prefixIcon: Icon(Icons.search_rounded,
                         color: AppColors.textSecondary),
                     border: InputBorder.none,
-                    contentPadding: EdgeInsets.all(20),
+                    contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   ),
                 ),
               ),
@@ -258,23 +247,63 @@ class _ServerListScreenState extends State<ServerListScreen>
                                 ),
                               );
                             }
-                            return ListView.builder(
+                             return ListView.builder(
                               padding: const EdgeInsets.all(16),
                               itemCount: list.length,
                               itemBuilder: (_, i) => _ServerCard(
                                 server: list[i],
                                 onConnect: () {
                                   final server = list[i];
-                                  final types = (server['types'] as Map?) ?? {};
-                                  final isPro = types['streaming'] == true ||
-                                      types['gaming'] == true ||
-                                      types['crypto'] == true ||
-                                      types['p2p'] == true ||
-                                      types['dedicated_ip'] == true;
+                                  final reqPlan = server['required_plan']?.toString() ?? 'free';
+                                  final userPlan = provider.userData?['plan']?.toString() ?? 'free';
 
-                                  provider.setSelectedServer(Map<String, dynamic>.from(server));
+                                  int planTier(String plan) {
+                                    switch (plan.toLowerCase()) {
+                                      case 'free': return 0;
+                                      case 'starter': return 1;
+                                      case 'pro': return 2;
+                                      case 'premium': return 3;
+                                      default: return 0;
+                                    }
+                                  }
+
+                                  final hasAccess = planTier(userPlan) >= planTier(reqPlan) || 
+                                                    (userPlan.toLowerCase() == 'free' && reqPlan.toLowerCase() == 'starter');
+
+                                  if (!hasAccess) {
+                                    showDialog(
+                                      context: context,
+                                      builder: (ctx) => AlertDialog(
+                                        backgroundColor: AppColors.cardBackground,
+                                        title: const Text('Premium Location', style: TextStyle(color: Colors.white)),
+                                        content: Text('This server requires a ${reqPlan.toUpperCase()} plan or higher. Please upgrade to connect.',
+                                            style: const TextStyle(color: AppColors.textSecondary)),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () => Navigator.pop(ctx),
+                                            child: const Text('Cancel'),
+                                          ),
+                                          TextButton(
+                                            onPressed: () {
+                                              Navigator.pop(ctx);
+                                              Navigator.pushNamed(context, '/account/pricing');
+                                            },
+                                            child: const Text('UPGRADE', style: TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.bold)),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                    return;
+                                  }
+
+                                  provider.setSelectedServer(
+                                      Map<String, dynamic>.from(server));
                                   provider.connect(server['id'].toString());
-                                  Navigator.pop(context);
+                                  if (widget.onSelectServer != null) {
+                                    widget.onSelectServer!();
+                                  } else if (Navigator.canPop(context)) {
+                                    Navigator.pop(context);
+                                  }
                                 },
                               )
                                   .animate()
@@ -305,16 +334,25 @@ class _ServerCardState extends State<_ServerCard> {
 
   @override
   Widget build(BuildContext context) {
-    final types = (widget.server['types'] as Map?) ?? {};
-    final isPro = types['streaming'] == true ||
-        types['gaming'] == true ||
-        types['crypto'] == true ||
-        types['p2p'] == true ||
-        types['dedicated_ip'] == true;
-    final ping = widget.server['ping_ms'] ?? 0;
-    
-    // We need to access provider to know if the user is free
+    // We need to access provider to know the user's plan
     final provider = Provider.of<VPNProvider>(context);
+    final userPlan = provider.userData?['plan']?.toString() ?? 'free';
+    final reqPlan = widget.server['required_plan']?.toString() ?? 'free';
+
+    int planTier(String plan) {
+      switch (plan.toLowerCase()) {
+        case 'free': return 0;
+        case 'starter': return 1;
+        case 'pro': return 2;
+        case 'premium': return 3;
+        default: return 0;
+      }
+    }
+
+    final hasAccess = planTier(userPlan) >= planTier(reqPlan) || 
+                      (userPlan.toLowerCase() == 'free' && reqPlan.toLowerCase() == 'starter');
+    final isPremiumServer = reqPlan.toLowerCase() != 'free';
+    final ping = widget.server['ping_ms'] ?? 0;
 
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -368,7 +406,7 @@ class _ServerCardState extends State<_ServerCard> {
                               fontWeight: FontWeight.w800,
                               fontSize: 16),
                         ),
-                        if (isPro) ...[
+                        if (isPremiumServer) ...[
                           const SizedBox(width: 8),
                           Container(
                             padding: const EdgeInsets.symmetric(
@@ -377,8 +415,8 @@ class _ServerCardState extends State<_ServerCard> {
                               color: Colors.amber.withValues(alpha: 0.2),
                               borderRadius: BorderRadius.circular(6),
                             ),
-                            child: const Text('PRO',
-                                style: TextStyle(
+                            child: Text(reqPlan.toUpperCase(),
+                                style: const TextStyle(
                                     color: Colors.amber,
                                     fontSize: 10,
                                     fontWeight: FontWeight.w900,
@@ -417,7 +455,10 @@ class _ServerCardState extends State<_ServerCard> {
                     ],
                   ),
                   const SizedBox(height: 4),
-                  if (isPro && provider.isFreeUser)
+                   if (userPlan.toLowerCase() == 'free' && reqPlan.toLowerCase() == 'starter')
+                    const Icon(Icons.ondemand_video_rounded,
+                        color: Colors.amber, size: 20)
+                   else if (!hasAccess)
                     const Icon(Icons.lock_rounded,
                         color: Colors.amber, size: 20)
                   else

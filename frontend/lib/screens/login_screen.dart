@@ -21,6 +21,31 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   bool _isLoading = false;
   String? _error;
+  bool _googleInitialized = false;
+
+  static const _googleServerClientId =
+      '371315886913-fueubrgdbdj61oilt7jeh2kqid3vs4il.apps.googleusercontent.com';
+  static const _iosClientId =
+      '371315886913-gftksk78hcd6r9dlkvba96mjk93d7ng6.apps.googleusercontent.com';
+
+  @override
+  void initState() {
+    super.initState();
+    _initGoogleSignIn();
+  }
+
+  void _initGoogleSignIn() {
+    try {
+      GoogleSignIn.instance.initialize(
+        serverClientId: _googleServerClientId,
+        clientId: Theme.of(context).platform == TargetPlatform.iOS ? _iosClientId : null,
+      );
+      _googleInitialized = true;
+    } catch (_) {
+      // Already initialized — safe to ignore
+      _googleInitialized = true;
+    }
+  }
 
   Future<void> _login() async {
     final email = _emailController.text.trim();
@@ -60,9 +85,11 @@ class _LoginScreenState extends State<LoginScreen> {
             const SnackBar(
               content: Row(
                 children: [
-                  Icon(Icons.check_circle_outline_rounded, color: Colors.white, size: 20),
+                  Icon(Icons.check_circle_outline_rounded,
+                      color: Colors.white, size: 20),
                   SizedBox(width: 12),
-                  Text('Login Successful! Welcome back.', style: TextStyle(fontWeight: FontWeight.bold)),
+                  Text('Login Successful! Welcome back.',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
                 ],
               ),
               backgroundColor: AppColors.success,
@@ -71,11 +98,13 @@ class _LoginScreenState extends State<LoginScreen> {
           );
           await context.read<VPNProvider>().fetchProfile();
           if (mounted) {
-            Navigator.pushReplacementNamed(context, '/dashboard');
+            Navigator.pushNamedAndRemoveUntil(context, '/dashboard', (route) => false);
           }
         }
       } else {
-        setState(() => _error = response['detail'] ?? response['message'] ?? 'Login failed. Please try again.');
+        setState(() => _error = response['detail'] ??
+            response['message'] ??
+            'Login failed. Please try again.');
       }
     } catch (e) {
       setState(() => _error = e.toString().replaceAll('Exception: ', ''));
@@ -86,7 +115,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _handleSocialLogin(String provider) async {
     if (provider != 'Google') {
-      // Apple Sign In — coming soon
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Apple Sign In coming soon!'),
@@ -97,40 +125,67 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    setState(() { _isLoading = true; _error = null; });
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
 
     try {
-      await GoogleSignIn.instance.initialize(
-        serverClientId: '755976865784-073d2g9qun1ae6eht8er591vge24gph7.apps.googleusercontent.com',
-      );
-      final account = await GoogleSignIn.instance.authenticate();
-      if (account == null) {
-        setState(() => _isLoading = false);
-        return;
+      // Ensure GoogleSignIn is fully initialized before authenticating
+      try {
+        await GoogleSignIn.instance.initialize(
+          serverClientId: _googleServerClientId,
+        );
+      } catch (e) {
+        // Initialization warning — non-fatal, continue
       }
 
-      final idToken = account.authentication.idToken;
+      final account = await GoogleSignIn.instance.authenticate();
 
-      if (idToken == null) {
+      if (account == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Google Sign-In failed: App certificate not authorised. Please use Email & Password.',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              backgroundColor: Colors.red,
+              behavior: SnackBarBehavior.floating,
+              duration: Duration(seconds: 8),
+            ),
+          );
+        }
         setState(() {
           _isLoading = false;
-          _error = 'Google sign-in failed. Please try again.';
+          _error = 'Google Sign-In failed: App certificate not registered in Google Cloud Console.\n\nDebug SHA-256: e2780eda94bcb1ea5e376519dcdbe853977121aa225d5cc2bbfde58fc7a0038d\n\nPlease use Email & Password to log in.';
         });
         return;
       }
 
-      // Send ID token to our backend (Flow B)
+      final idToken = account.authentication.idToken;
+      if (idToken == null) {
+        setState(() {
+          _isLoading = false;
+          _error = 'Could not get Google ID token. Please try again.';
+        });
+        return;
+      }
+
+      // Send ID token to our backend
       final response = await ApiService.googleVerify(idToken);
 
       if (response['success'] == true) {
         if (mounted) {
+          final name = response['data']?['user']?['full_name'] ?? 'back';
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Row(
                 children: [
-                  const Icon(Icons.check_circle_outline_rounded, color: Colors.white, size: 20),
+                  const Icon(Icons.check_circle_outline_rounded,
+                      color: Colors.white, size: 20),
                   const SizedBox(width: 12),
-                  Text('Welcome, ${response['data']['user']['full_name'] ?? 'back'}!',
+                  Text('Welcome, $name!',
                       style: const TextStyle(fontWeight: FontWeight.bold)),
                 ],
               ),
@@ -139,12 +194,27 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           );
           await context.read<VPNProvider>().fetchProfile();
-          if (mounted) Navigator.pushReplacementNamed(context, '/dashboard');
+          if (mounted) Navigator.pushNamedAndRemoveUntil(context, '/dashboard', (route) => false);
         }
       } else {
-        setState(() => _error = response['message'] ?? 'Google sign-in failed. Please try again.');
+        // Check if the backend returned a 500-style message
+        final msg = response['message'] as String? ?? '';
+        final isServerError = msg.contains('500') ||
+            msg.toLowerCase().contains('malformed') ||
+            msg.toLowerCase().contains('unreachable');
+        setState(() => _error = isServerError
+            ? 'Google Sign-In is temporarily unavailable on the server. Please use email & password to log in.'
+            : (msg.isNotEmpty
+                ? msg
+                : 'Google sign-in failed. Please try again.'));
       }
     } catch (e) {
+      final msg = e.toString();
+      // User cancelled the Google picker — don't show an error
+      if (msg.contains('cancel') || msg.contains('sign_in_canceled')) {
+        setState(() => _isLoading = false);
+        return;
+      }
       setState(() => _error = 'Google sign-in failed: $e');
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -157,50 +227,72 @@ class _LoginScreenState extends State<LoginScreen> {
 
     showDialog(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setState) {
-          return AlertDialog(
-            backgroundColor: AppColors.cardBackground,
-            title: const Text('Reset Password', style: TextStyle(color: Colors.white)),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text('Enter your email address to receive a password reset link.', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: emailCtrl,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: const InputDecoration(
-                    labelText: 'Email Address',
-                    labelStyle: TextStyle(color: AppColors.textSecondary),
-                    enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: AppColors.divider)),
-                    focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: AppColors.primaryBlue)),
-                  ),
+      builder: (ctx) => StatefulBuilder(builder: (context, setState) {
+        return AlertDialog(
+          backgroundColor: AppColors.cardBackground,
+          title: const Text('Reset Password',
+              style: TextStyle(color: Colors.white)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                  'Enter your email address to receive a password reset link.',
+                  style:
+                      TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+              const SizedBox(height: 16),
+              TextField(
+                controller: emailCtrl,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  labelText: 'Email Address',
+                  labelStyle: TextStyle(color: AppColors.textSecondary),
+                  enabledBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: AppColors.divider)),
+                  focusedBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: AppColors.primaryBlue)),
                 ),
-              ],
-            ),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary))),
-              ElevatedButton(
-                onPressed: isSubmitting ? null : () async {
-                  if (emailCtrl.text.isEmpty) return;
-                  setState(() => isSubmitting = true);
-                  final resp = await ApiService.forgotPassword(emailCtrl.text);
-                  
-                  if (ctx.mounted) {
-                    Navigator.pop(ctx);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(resp['success'] == true ? 'Reset link sent! Check your email.' : (resp['message'] ?? 'Failed to send link'))),
-                    );
-                  }
-                },
-                style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryBlue, foregroundColor: Colors.white),
-                child: isSubmitting ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Send Link'),
               ),
             ],
-          );
-        }
-      ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel',
+                    style: TextStyle(color: AppColors.textSecondary))),
+            ElevatedButton(
+              onPressed: isSubmitting
+                  ? null
+                  : () async {
+                      if (emailCtrl.text.isEmpty) return;
+                      setState(() => isSubmitting = true);
+                      final resp =
+                          await ApiService.forgotPassword(emailCtrl.text);
+
+                      if (ctx.mounted) {
+                        Navigator.pop(ctx);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                              content: Text(resp['success'] == true
+                                  ? 'Reset link sent! Check your email.'
+                                  : (resp['message'] ??
+                                      'Failed to send link'))),
+                        );
+                      }
+                    },
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primaryBlue,
+                  foregroundColor: Colors.white),
+              child: isSubmitting
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white))
+                  : const Text('Send Link'),
+            ),
+          ],
+        );
+      }),
     );
   }
 
@@ -217,20 +309,27 @@ class _LoginScreenState extends State<LoginScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const SizedBox(height: 40),
-              
+
               // Logo/Icon
               Center(
                 child: Column(
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(16),
+                      width: 96,
+                      height: 96,
+                      padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: AppColors.primaryBlue.withValues(alpha: 0.1),
+                        color: AppColors.primaryBlue.withValues(alpha: 0.05),
                         shape: BoxShape.circle,
+                        border: Border.all(
+                          color: AppColors.primaryBlue.withValues(alpha: 0.15),
+                        ),
                       ),
-                      child: const Icon(Icons.shield_rounded, size: 64, color: AppColors.primaryBlue),
+                      child: Image.asset(
+                        'assets/images/app_logo.png',
+                        fit: BoxFit.contain,
+                      ),
                     ).animate().scale(curve: Curves.easeOutBack),
-                    
                     if (!kIsWeb && MediaQuery.of(context).size.width > 900) ...[
                       const SizedBox(height: 40),
                       ClipRRect(
@@ -241,56 +340,68 @@ class _LoginScreenState extends State<LoginScreen> {
                           fit: BoxFit.contain,
                           errorBuilder: (c, e, s) => Container(),
                         ),
-                      ).animate().fadeIn(duration: 800.ms).scale(begin: const Offset(0.9, 0.9)),
-                    ] else if (kIsWeb && MediaQuery.of(context).size.width > 800) ...[
-                       const SizedBox(height: 40),
-                       // Premium 3D-like Animation for Web
-                       Container(
-                         height: 220,
-                         width: 220,
-                         decoration: BoxDecoration(
-                           shape: BoxShape.circle,
-                           gradient: RadialGradient(
-                             colors: [
-                               AppColors.primaryBlue.withValues(alpha: 0.2),
-                               Colors.transparent,
-                             ],
-                           ),
-                         ),
-                         child: Stack(
-                           alignment: Alignment.center,
-                           children: [
-                             Icon(
-                               Icons.security_rounded, 
-                               size: 140, 
-                               color: AppColors.primaryBlue.withValues(alpha: 0.8),
-                             ).animate(onPlay: (c) => c.repeat())
-                              .shimmer(duration: 2.seconds)
-                              .scale(duration: 2.seconds, begin: const Offset(1, 1), end: const Offset(1.1, 1.1)),
-                             
-                             Icon(
-                               Icons.lock_rounded,
-                               size: 40,
-                               color: Colors.white.withValues(alpha: 0.6),
-                             ),
-                           ],
-                         ),
-                       ).animate().fadeIn(duration: 1.seconds),
+                      )
+                          .animate()
+                          .fadeIn(duration: 800.ms)
+                          .scale(begin: const Offset(0.9, 0.9)),
+                    ] else if (kIsWeb &&
+                        MediaQuery.of(context).size.width > 800) ...[
+                      const SizedBox(height: 40),
+                      // Premium 3D-like Animation for Web
+                      Container(
+                        height: 220,
+                        width: 220,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: RadialGradient(
+                            colors: [
+                              AppColors.primaryBlue.withValues(alpha: 0.2),
+                              Colors.transparent,
+                            ],
+                          ),
+                        ),
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            Icon(
+                              Icons.security_rounded,
+                              size: 140,
+                              color:
+                                  AppColors.primaryBlue.withValues(alpha: 0.8),
+                            )
+                                .animate(onPlay: (c) => c.repeat())
+                                .shimmer(duration: 2.seconds)
+                                .scale(
+                                    duration: 2.seconds,
+                                    begin: const Offset(1, 1),
+                                    end: const Offset(1.1, 1.1)),
+                            Icon(
+                              Icons.lock_rounded,
+                              size: 40,
+                              color: Colors.white.withValues(alpha: 0.6),
+                            ),
+                          ],
+                        ),
+                      ).animate().fadeIn(duration: 1.seconds),
                     ],
                   ],
                 ),
               ),
 
               const SizedBox(height: 32),
-              
+
               const Text(
                 'Welcome Back',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: -1),
+                style: TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white,
+                    letterSpacing: -1),
               ).animate().fadeIn().moveY(begin: 10, end: 0),
 
               const SizedBox(height: 8),
-              
+
               const Text(
                 'Sign in to continue your secure browsing',
                 textAlign: TextAlign.center,
@@ -306,9 +417,13 @@ class _LoginScreenState extends State<LoginScreen> {
                   decoration: BoxDecoration(
                     color: AppColors.warning.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: AppColors.warning.withValues(alpha: 0.2)),
+                    border: Border.all(
+                        color: AppColors.warning.withValues(alpha: 0.2)),
                   ),
-                  child: Text(_error!, style: const TextStyle(color: AppColors.warning, fontWeight: FontWeight.w600)),
+                  child: Text(_error!,
+                      style: const TextStyle(
+                          color: AppColors.warning,
+                          fontWeight: FontWeight.w600)),
                 ).animate().shake(),
 
               // Email Field
@@ -332,7 +447,10 @@ class _LoginScreenState extends State<LoginScreen> {
                 alignment: Alignment.centerRight,
                 child: TextButton(
                   onPressed: () => _showForgotPasswordDialog(context),
-                  child: const Text('Forgot Password?', style: TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.w700)),
+                  child: const Text('Forgot Password?',
+                      style: TextStyle(
+                          color: AppColors.primaryBlue,
+                          fontWeight: FontWeight.w700)),
                 ),
               ),
 
@@ -345,12 +463,21 @@ class _LoginScreenState extends State<LoginScreen> {
                   backgroundColor: AppColors.primaryBlue,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 20),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)),
                   elevation: 0,
                 ),
-                child: _isLoading 
-                  ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 3, color: Colors.white))
-                  : const Text('SIGN IN', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, letterSpacing: 1)),
+                child: _isLoading
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 3, color: Colors.white))
+                    : const Text('SIGN IN',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 16,
+                            letterSpacing: 1)),
               ).animate().fadeIn(delay: 400.ms),
 
               const SizedBox(height: 32),
@@ -361,7 +488,11 @@ class _LoginScreenState extends State<LoginScreen> {
                   Expanded(child: Divider(color: AppColors.divider)),
                   const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 16),
-                    child: Text("OR", style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.bold, fontSize: 12)),
+                    child: Text("OR",
+                        style: TextStyle(
+                            color: AppColors.textSecondary,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12)),
                   ),
                   Expanded(child: Divider(color: AppColors.divider)),
                 ],
@@ -370,9 +501,13 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(height: 32),
 
               // Social Logins
-              _buildSocialButton('Continue with Google', Icons.g_mobiledata_rounded, () => _handleSocialLogin('Google')),
+              _buildSocialButton(
+                  'Continue with Google',
+                  Icons.g_mobiledata_rounded,
+                  () => _handleSocialLogin('Google')),
               const SizedBox(height: 16),
-              _buildSocialButton('Continue with Apple', Icons.apple_rounded, () => _handleSocialLogin('Apple')),
+              _buildSocialButton('Continue with Apple', Icons.apple_rounded,
+                  () => _handleSocialLogin('Apple')),
 
               const SizedBox(height: 48),
 
@@ -380,10 +515,14 @@ class _LoginScreenState extends State<LoginScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Text("Don't have an account?", style: TextStyle(color: AppColors.textSecondary)),
+                  const Text("Don't have an account?",
+                      style: TextStyle(color: AppColors.textSecondary)),
                   TextButton(
                     onPressed: () => Navigator.pushNamed(context, '/signup'),
-                    child: const Text('Sign Up', style: TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.w900)),
+                    child: const Text('Sign Up',
+                        style: TextStyle(
+                            color: AppColors.primaryBlue,
+                            fontWeight: FontWeight.w900)),
                   ),
                 ],
               ),
@@ -415,12 +554,14 @@ class _LoginScreenState extends State<LoginScreen> {
       child: OutlinedButton.icon(
         onPressed: onTap,
         icon: Icon(icon, size: 28),
-        label: Text(label, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+        label: Text(label,
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
         style: OutlinedButton.styleFrom(
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(vertical: 16),
           side: BorderSide(color: AppColors.divider),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         ),
       ),
     );

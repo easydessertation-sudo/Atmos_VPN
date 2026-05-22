@@ -62,9 +62,7 @@ class _BillingScreenState extends State<BillingScreen> {
         if (await canLaunchUrl(url)) {
           await launchUrl(
             url,
-            mode: LaunchMode.inAppWebView,
-            webViewConfiguration:
-                const WebViewConfiguration(enableJavaScript: true),
+            mode: LaunchMode.externalApplication,
           );
           // Refresh billing history after user closes the portal
           if (mounted) _loadHistory();
@@ -187,8 +185,17 @@ class _BillingScreenState extends State<BillingScreen> {
                           final dateStr = date != null
                               ? '${date.day}/${date.month}/${date.year}'
                               : 'Unknown date';
-                          final amount = (sub['amount_pence'] ?? 0) / 100.0;
+                          final amount = (sub['amount_usd'] ?? 0).toDouble();
                           final isActive = sub['status'] == 'active';
+                          final currency = sub['currency']?.toString() ?? 'USD';
+                          String currencySymbol = '\$';
+                          if (currency.toUpperCase() == 'GBP') {
+                            currencySymbol = '£';
+                          } else if (currency.toUpperCase() == 'EUR') {
+                            currencySymbol = '€';
+                          } else if (currency.toUpperCase() == 'INR') {
+                            currencySymbol = '₹';
+                          }
                           return Container(
                             margin: const EdgeInsets.only(bottom: 12),
                             padding: const EdgeInsets.all(18),
@@ -243,7 +250,7 @@ class _BillingScreenState extends State<BillingScreen> {
                                   crossAxisAlignment: CrossAxisAlignment.end,
                                   children: [
                                     Text(
-                                      '£${amount.toStringAsFixed(2)}',
+                                      '$currencySymbol${amount.toStringAsFixed(2)}',
                                       style: const TextStyle(
                                           color: Colors.white,
                                           fontWeight: FontWeight.w900,

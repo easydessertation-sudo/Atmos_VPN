@@ -5,6 +5,7 @@ import '../widgets/app_container.dart';
 import '../utils/api_service.dart';
 import 'package:provider/provider.dart';
 import '../main.dart';
+import '../utils/ad_manager.dart';
 
 class SecurityCenterScreen extends StatefulWidget {
   const SecurityCenterScreen({super.key});
@@ -79,85 +80,122 @@ class _SecurityCenterScreenState extends State<SecurityCenterScreen> {
   }
 
   Future<void> _toggleFeature(String key, bool value) async {
-    await context.read<VPNProvider>().toggleSecurityFeature(key, value);
-    // Score auto-updates because it's computed from vpn.securityFeatures
+    final plan = context.read<VPNProvider>().userData?['plan']?.toString() ?? 'free';
+    if (plan == 'free') {
+      AdManager.showInterstitialAd(onAdDismissed: () async {
+        await context.read<VPNProvider>().toggleSecurityFeature(key, value);
+      });
+    } else {
+      await context.read<VPNProvider>().toggleSecurityFeature(key, value);
+    }
   }
 
   Future<void> _checkIp() async {
-    setState(() {
-      _isCheckingIp = true;
-      _currentIp = null;
-    });
-    try {
-      final resp = await ApiService.getIp();
-      final ip = resp['data']?['ip']?.toString() ?? resp['ip']?.toString();
-      if (mounted) {
-        setState(() => _currentIp = ip ?? 'Unable to fetch');
+    final plan = context.read<VPNProvider>().userData?['plan']?.toString() ?? 'free';
+
+    void proceed() async {
+      setState(() {
+        _isCheckingIp = true;
+        _currentIp = null;
+      });
+      try {
+        final resp = await ApiService.getIp();
+        final ip = resp['data']?['ip']?.toString() ?? resp['ip']?.toString();
+        if (mounted) {
+          setState(() => _currentIp = ip ?? 'Unable to fetch');
+        }
+      } catch (e) {
+        if (mounted) setState(() => _currentIp = 'Error: Check connection');
+      } finally {
+        if (mounted) setState(() => _isCheckingIp = false);
       }
-    } catch (e) {
-      if (mounted) setState(() => _currentIp = 'Error: Check connection');
-    } finally {
-      if (mounted) setState(() => _isCheckingIp = false);
+    }
+
+    if (plan == 'free') {
+      AdManager.showInterstitialAd(onAdDismissed: proceed);
+    } else {
+      proceed();
     }
   }
 
   Future<void> _runLeakTest() async {
-    setState(() {
-      _isRunningLeakTest = true;
-      _leakTestResult = null;
-      _leakDetected = null;
-    });
-    try {
-      // Step 1: Get current public IP via our backend
-      final ipResp = await ApiService.getIp();
-      final currentIp =
-          ipResp['data']?['ip']?.toString() ?? ipResp['ip']?.toString();
+    final plan = context.read<VPNProvider>().userData?['plan']?.toString() ?? 'free';
 
-      // Step 2: Get VPN status to check if connected and what IP was assigned
-      final vpn = context.read<VPNProvider>();
-      final isConnected = vpn.isConnected;
+    void proceed() async {
+      setState(() {
+        _isRunningLeakTest = true;
+        _leakTestResult = null;
+        _leakDetected = null;
+      });
+      try {
+        // Step 1: Get current public IP via our backend
+        final ipResp = await ApiService.getIp();
+        final currentIp =
+            ipResp['data']?['ip']?.toString() ?? ipResp['ip']?.toString();
 
-      await Future.delayed(const Duration(seconds: 1)); // simulate deeper check
+        // Step 2: Get VPN status to check if connected and what IP was assigned
+        final vpn = context.read<VPNProvider>();
+        final isConnected = vpn.isConnected;
 
-      if (mounted) {
-        if (!isConnected) {
+        await Future.delayed(const Duration(seconds: 1)); // simulate deeper check
+
+        if (mounted) {
+          if (!isConnected) {
+            setState(() {
+              _leakDetected = null;
+              _leakTestResult =
+                  'Not connected to VPN.\nConnect first to test for leaks.\nYour IP: ${currentIp ?? "Unknown"}';
+            });
+          } else {
+            // When connected, check if the visible IP matches server's IP (not the device's real IP)
+            // If they're routing correctly, the IP should be the VPN server's IP
+            setState(() {
+              _leakDetected = false;
+              _leakTestResult =
+                  'No DNS leaks detected ✓\nVisible IP: ${currentIp ?? "Unknown"}\nTraffic is fully encrypted through VPN tunnel.';
+            });
+          }
+        }
+      } catch (e) {
+        if (mounted) {
           setState(() {
             _leakDetected = null;
-            _leakTestResult =
-                'Not connected to VPN.\nConnect first to test for leaks.\nYour IP: ${currentIp ?? "Unknown"}';
-          });
-        } else {
-          // When connected, check if the visible IP matches server's IP (not the device's real IP)
-          // If they're routing correctly, the IP should be the VPN server's IP
-          setState(() {
-            _leakDetected = false;
-            _leakTestResult =
-                'No DNS leaks detected ✓\nVisible IP: ${currentIp ?? "Unknown"}\nTraffic is fully encrypted through VPN tunnel.';
+            _leakTestResult = 'Test failed. Check your connection.';
           });
         }
+      } finally {
+        if (mounted) setState(() => _isRunningLeakTest = false);
       }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _leakDetected = null;
-          _leakTestResult = 'Test failed. Check your connection.';
-        });
-      }
-    } finally {
-      if (mounted) setState(() => _isRunningLeakTest = false);
+    }
+
+    if (plan == 'free') {
+      AdManager.showInterstitialAd(onAdDismissed: proceed);
+    } else {
+      proceed();
     }
   }
 
   Future<void> _selectProtocol(String protocolId) async {
     if (_isSavingProtocol || _selectedProtocol == protocolId) return;
-    setState(() {
-      _isSavingProtocol = true;
-      _selectedProtocol = protocolId;
-    });
-    try {
-      await ApiService.updateSettings({'preferred_protocol': protocolId});
-    } catch (_) {}
-    if (mounted) setState(() => _isSavingProtocol = false);
+
+    final plan = context.read<VPNProvider>().userData?['plan']?.toString() ?? 'free';
+
+    void proceed() async {
+      setState(() {
+        _isSavingProtocol = true;
+        _selectedProtocol = protocolId;
+      });
+      try {
+        await ApiService.updateSettings({'preferred_protocol': protocolId});
+      } catch (_) {}
+      if (mounted) setState(() => _isSavingProtocol = false);
+    }
+
+    if (plan == 'free') {
+      AdManager.showInterstitialAd(onAdDismissed: proceed);
+    } else {
+      proceed();
+    }
   }
 
   Color _getScoreColor(int score) {
@@ -180,10 +218,7 @@ class _SecurityCenterScreenState extends State<SecurityCenterScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
+        automaticallyImplyLeading: false,
         title: const Text('Security Center',
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900)),
         actions: [
