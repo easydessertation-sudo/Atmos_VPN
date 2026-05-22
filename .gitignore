@@ -17,3 +17,6 @@ backend/venv/
 # OS
 .DS_Store
 Thumbs.db
+
+# Firebase Credentials
+firebase-service-account*.json
