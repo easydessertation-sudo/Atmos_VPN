@@ -4058,6 +4058,15 @@ def status_subscribe(body: StatusSubscribeRequest, db: Session = Depends(get_db)
     return success(msg="Successfully subscribed to status alerts!")
 
 # ─────────────────────────────────────────────────────────────────
+# AdMob app-ads.txt
+# ─────────────────────────────────────────────────────────────────
+@app.get("/app-ads.txt", tags=["SEO"])
+def get_app_ads_txt():
+    from fastapi import Response
+    content = "google.com, pub-4377728206732134, DIRECT, f08c47fec0942fa0"
+    return Response(content=content, media_type="text/plain")
+
+# ─────────────────────────────────────────────────────────────────
 # Entry Point
 # ─────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
