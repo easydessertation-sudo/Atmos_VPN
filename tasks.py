@@ -179,16 +179,24 @@ async def _ssh_add_peer(server_ip: str, public_key: str, assigned_ip: str) -> bo
             cmd = f"wg set wg0 peer {public_key} allowed-ips {assigned_ip}/32"
             await conn.run(cmd, check=True)
 
-            # Persist peer to wg0.conf manually (SaveConfig=false prevents auto-overwrite)
-            persist_cmd = (
-                f"echo '' >> /etc/wireguard/wg0.conf && "
-                f"echo '[Peer]' >> /etc/wireguard/wg0.conf && "
-                f"echo 'PublicKey = {public_key}' >> /etc/wireguard/wg0.conf && "
-                f"echo 'AllowedIPs = {assigned_ip}/32' >> /etc/wireguard/wg0.conf"
+            # Persist peer to wg0.conf — but ONLY if not already present
+            # (prevents duplicate [Peer] blocks if Celery retries after direct SSH success)
+            check_exists = await conn.run(
+                f"grep -c '{public_key}' /etc/wireguard/wg0.conf || true",
+                check=False
             )
-            await conn.run(persist_cmd, check=True)
+            already_in_conf = int((check_exists.stdout or '0').strip()) > 0
 
-            logger.info(f"Peer {public_key[:16]}... added and persisted on {server_ip}")
+            if not already_in_conf:
+                persist_cmd = (
+                    f"printf '\\n[Peer]\\nPublicKey = {public_key}\\nAllowedIPs = {assigned_ip}/32\\n'"
+                    f" >> /etc/wireguard/wg0.conf"
+                )
+                await conn.run(persist_cmd, check=True)
+                logger.info(f"Peer {public_key[:16]}... added and persisted on {server_ip}")
+            else:
+                logger.info(f"Peer {public_key[:16]}... already in wg0.conf on {server_ip} — skipped append")
+
             return True
     except Exception as e:
         logger.error(f"SSH error on {server_ip}: {e}")
@@ -286,12 +294,20 @@ async def _ssh_remove_peer(server_ip: str, public_key: str) -> bool:
         async with asyncssh.connect(server_ip, **connect_kwargs) as conn:
             # Remove from running WireGuard
             await conn.run(f"wg set wg0 peer {public_key} remove", check=True)
-            # Remove from wg0.conf (delete the 2-line [Peer] block for this key)
+            # Remove ALL occurrences of this peer from wg0.conf
+            # (handles cases where duplicates crept in)
+            # Remove all [Peer] blocks for this key using awk
+            # This handles duplicate entries cleanly
             remove_cmd = (
-                f"sed -i '/^\\[Peer\\]/,/^$/{{/PublicKey = {public_key}/{{N;d}}}};/PublicKey = {public_key}/d' "
-                f"/etc/wireguard/wg0.conf"
+                "awk 'BEGIN{skip=0} "
+                "/^\\[Peer\\]/{skip=0} "
+                f"/^PublicKey = {public_key.replace('+', '\\\\+').replace('/', '\\\\/').replace('=', '\\\\=')}/"
+                "{skip=1; found=NR} "
+                "skip && NR==found-1{next} "
+                "!skip{print}' /etc/wireguard/wg0.conf > /tmp/wg0_clean.conf && "
+                "mv /tmp/wg0_clean.conf /etc/wireguard/wg0.conf"
             )
-            await conn.run(remove_cmd)
+            await conn.run(remove_cmd, check=False)
             return True
     except Exception as e:
         logger.error(f"SSH error removing peer on {server_ip}: {e}")
