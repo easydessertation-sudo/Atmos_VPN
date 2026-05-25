@@ -2953,7 +2953,11 @@ def test_trigger_notification(
         message=t["message"],
         meta=t.get("meta"),
     )
-    return success(n.to_dict(), msg="New notification generated and push queued successfully")
+    return {
+        "success": True,
+        "message": "New notification generated and push queued successfully",
+        "notification": n.to_dict()
+    }
 
 
 @app.get("/api/notifications", tags=["Account"])
