@@ -298,10 +298,11 @@ async def _ssh_remove_peer(server_ip: str, public_key: str) -> bool:
             # (handles cases where duplicates crept in)
             # Remove all [Peer] blocks for this key using awk
             # This handles duplicate entries cleanly
+            clean_pk = public_key.replace('+', '\\\\+').replace('/', '\\\\/').replace('=', '\\\\=')
             remove_cmd = (
                 "awk 'BEGIN{skip=0} "
                 "/^\\[Peer\\]/{skip=0} "
-                f"/^PublicKey = {public_key.replace('+', '\\\\+').replace('/', '\\\\/').replace('=', '\\\\=')}/"
+                f"/^PublicKey = {clean_pk}/"
                 "{skip=1; found=NR} "
                 "skip && NR==found-1{next} "
                 "!skip{print}' /etc/wireguard/wg0.conf > /tmp/wg0_clean.conf && "
