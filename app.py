@@ -1525,6 +1525,46 @@ def provision(
         db, str(user.id), server_id, body.device_name
     )
     if existing:
+        peer_status = "existing"
+        # ── Key Rotation: If frontend regenerated keys for the same device ──
+        if existing.public_key != body.public_key:
+            old_key = existing.public_key
+            existing.public_key = body.public_key
+            db.commit()
+            
+            server_ip = server.ip_address or "0.0.0.0"
+            if server_ip != "0.0.0.0" and os.environ.get("WG_SIMULATION", "true").lower() != "true":
+                import asyncio as _asyncio
+                from tasks import _ssh_remove_peer, _ssh_add_peer
+                try:
+                    loop = _asyncio.new_event_loop()
+                    loop.run_until_complete(_ssh_remove_peer(server_ip, old_key))
+                    loop.run_until_complete(_ssh_add_peer(server_ip, body.public_key, existing.assigned_ip))
+                    loop.close()
+                    peer_status = "active"
+                    logger.info(f"Updated peer key for config {existing.id} on {server_ip}")
+                except Exception as e:
+                    logger.warning(f"Direct SSH key update failed: {e}")
+                    
+            try:
+                import uuid as _uuid
+                from tasks import remove_wireguard_peer, add_wireguard_peer
+                remove_wireguard_peer.delay(server_ip=server_ip, public_key=old_key)
+                add_wireguard_peer.delay(
+                    job_id=str(_uuid.uuid4()),
+                    server_ip=server_ip,
+                    public_key=body.public_key,
+                    assigned_ip=existing.assigned_ip,
+                    config_id=str(existing.id)
+                )
+            except Exception:
+                pass
+            
+            peer_status = "active"
+            msg = "Config updated with new key. Use wg_config in your WireGuard app."
+        else:
+            msg = "Existing config returned. Use wg_config in your WireGuard app."
+
         # Already provisioned — just return the existing config
         config_content = generate_wg_config(server, existing.assigned_ip)
         return success({
@@ -1532,8 +1572,8 @@ def provision(
             "assigned_ip":    existing.assigned_ip,
             "server":         server.to_dict(),
             "wg_config":      config_content,
-            "status":         "existing",
-            "message":        "Existing config returned. Use wg_config in your WireGuard app.",
+            "status":         peer_status,
+            "message":        msg,
         })
 
     # ── Step 3: Generate a config ID and save VPNConfig FIRST ──────
@@ -2734,6 +2774,7 @@ def register_fcm_token(
         existing.fcm_token = fcm_token
         existing.platform = platform
         existing.updated_at = datetime.utcnow()
+        db.commit()
     else:
         new_token = FCMToken(
             user_id=str(user.id),
@@ -2742,8 +2783,19 @@ def register_fcm_token(
             platform=platform,
         )
         db.add(new_token)
-
-    db.commit()
+        
+        from sqlalchemy.exc import IntegrityError
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            # Race condition: another concurrent request just inserted this device
+            existing = db.query(FCMToken).filter_by(user_id=str(user.id), device_id=device_id).first()
+            if existing:
+                existing.fcm_token = fcm_token
+                existing.platform = platform
+                existing.updated_at = datetime.utcnow()
+                db.commit()
     return success(msg="FCM token registered successfully")
 
 
