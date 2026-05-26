@@ -978,6 +978,7 @@ def apply_reset_password(request: Request, body: ResetPasswordRequest, db: Sessi
 # ─────────────────────────────────────────────────────────────────
 
 GOOGLE_CLIENT_ID     = os.environ.get("GOOGLE_CLIENT_ID", "")
+GOOGLE_IOS_CLIENT_ID = os.environ.get("GOOGLE_IOS_CLIENT_ID", "")  # iOS-specific OAuth client ID
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
 GOOGLE_REDIRECT_URI  = os.environ.get("GOOGLE_REDIRECT_URI", "http://localhost:3000/auth/google/callback")
 
@@ -1161,14 +1162,25 @@ def google_verify_token(
     if not GOOGLE_CLIENT_ID:
         raise HTTPException(status_code=503, detail="Google OAuth not configured")
 
-    try:
-        idinfo = google_id_token.verify_oauth2_token(
-            body.id_token,
-            google_requests.Request(),
-            GOOGLE_CLIENT_ID,
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=401, detail=f"Invalid Google token: {str(e)}")
+    # Try both Android/Web client ID and iOS client ID.
+    # Google tokens carry the client_id they were issued for in the `aud` claim,
+    # so we must verify against the correct one. iOS and Android use different client IDs.
+    idinfo = None
+    last_error = None
+    for client_id in filter(None, [GOOGLE_CLIENT_ID, GOOGLE_IOS_CLIENT_ID]):
+        try:
+            idinfo = google_id_token.verify_oauth2_token(
+                body.id_token,
+                google_requests.Request(),
+                client_id,
+            )
+            break  # verification succeeded — stop trying
+        except ValueError as e:
+            last_error = e
+            continue
+
+    if idinfo is None:
+        raise HTTPException(status_code=401, detail=f"Invalid Google token: {str(last_error)}")
 
     google_user = {
         "id":             idinfo["sub"],
