@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../utils/design_system.dart';
 import '../main.dart';
 import '../widgets/upgrade_banner.dart';
+import '../widgets/banner_ad_widget.dart';
 import '../utils/ad_manager.dart';
 import 'server_list.dart';
 import 'security_center.dart';
@@ -192,7 +193,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             const AccountScreen(),
           ],
         ),
-        bottomNavigationBar: _buildBottomNav(context),
+        bottomNavigationBar: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (vpn.isFreeUser)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 0.0),
+                child: BannerAdWidget(),
+              ),
+            _buildBottomNav(context),
+          ],
+        ),
       ),
     );
   }
@@ -662,6 +673,59 @@ class _HomeTab extends StatelessWidget {
           style: TextStyle(
               color: Colors.white.withValues(alpha: 0.4), fontSize: 13),
         ),
+        if (vpn.isConnected && vpn.isFreeUser) ...[
+          Builder(builder: (context) {
+            final reqPlan = vpn.selectedServer?['required_plan']?.toString().toLowerCase() ?? 'free';
+            if (reqPlan == 'starter') {
+              final int h = vpn.remainingSeconds ~/ 3600;
+              final int m = (vpn.remainingSeconds % 3600) ~/ 60;
+              final int s = vpn.remainingSeconds % 60;
+              final timeStr = '${h > 0 ? '$h : ' : ''}${m.toString().padLeft(2, '0')} : ${s.toString().padLeft(2, '0')}';
+              return Padding(
+                padding: const EdgeInsets.only(top: 24.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      timeStr,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 26,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 2,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    GestureDetector(
+                      onTap: () {
+                        AdManager.showInterstitialAd(onAdDismissed: () {
+                          vpn.watchAd();
+                        });
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+                        ),
+                        child: const Text(
+                          '+ 45 min',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }
+            return const SizedBox.shrink();
+          }),
+        ],
       ],
     );
   }
@@ -677,7 +741,7 @@ class _HomeTab extends StatelessWidget {
             : (ping < 100 ? Colors.amber : AppColors.warning));
     final serverName = server != null
         ? '${server['city'] ?? server['name']}, ${server['country'] ?? ''}'
-        : (vpn.isConnected ? vpn.currentServer : 'Auto — Best Available');
+        : (vpn.isConnected ? vpn.currentServer : 'Select a server');
 
     return MouseRegion(
       cursor: SystemMouseCursors.click,

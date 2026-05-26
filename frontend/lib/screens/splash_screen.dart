@@ -5,6 +5,8 @@ import '../utils/design_system.dart';
 import '../utils/api_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:package_info_plus/package_info_plus.dart';
+import '../utils/ad_manager.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -14,15 +16,27 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
+  String _appVersion = '';
+
   @override
   void initState() {
     super.initState();
+    _loadAppVersion();
     _handleStartup();
+  }
+
+  Future<void> _loadAppVersion() async {
+    final packageInfo = await PackageInfo.fromPlatform();
+    if (mounted) {
+      setState(() {
+        _appVersion = 'V ${packageInfo.version}';
+      });
+    }
   }
 
   Future<void> _handleStartup() async {
     // 1. Minimum delay for branding
-    await Future.delayed(const Duration(seconds: 2));
+    await Future.delayed(const Duration(seconds: 4));
 
     // 2. Load configurations or check auth
     final prefs = await SharedPreferences.getInstance();
@@ -36,6 +50,11 @@ class _SplashScreenState extends State<SplashScreen> {
             await ApiService.getMe().timeout(const Duration(seconds: 5));
         if (!mounted) return;
         if (userData['success'] == true) {
+          final plan =
+              userData['data']?['plan']?.toString().toLowerCase() ?? 'free';
+          if (plan == 'free' && !kIsWeb) {
+            AdManager.showAppOpenAdIfAvailable();
+          }
           Navigator.pushReplacementNamed(context, '/home');
           return;
         }
@@ -55,7 +74,7 @@ class _SplashScreenState extends State<SplashScreen> {
     if (kIsWeb) {
       Navigator.pushReplacementNamed(context, '/');
     } else {
-      Navigator.pushReplacementNamed(context, '/login');
+      Navigator.pushReplacementNamed(context, '/onboarding');
     }
   }
 
@@ -88,7 +107,7 @@ class _SplashScreenState extends State<SplashScreen> {
                 ),
               ),
             ),
-  
+
             // Content
             Center(
               child: Column(
@@ -124,9 +143,9 @@ class _SplashScreenState extends State<SplashScreen> {
                           begin: const Offset(1.1, 1.1),
                           end: const Offset(1, 1))
                       .shimmer(delay: 800.ms, duration: 1200.ms),
-  
+
                   const SizedBox(height: 32),
-  
+
                   // Branding
                   Text(
                     "AtmosVPN",
@@ -136,9 +155,9 @@ class _SplashScreenState extends State<SplashScreen> {
                           color: Colors.white,
                         ),
                   ).animate().fadeIn(delay: 400.ms).moveY(begin: 20, end: 0),
-  
+
                   const SizedBox(height: 12),
-  
+
                   Text(
                     "FAST • PRIVATE • GLOBAL",
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -147,9 +166,9 @@ class _SplashScreenState extends State<SplashScreen> {
                           fontWeight: FontWeight.bold,
                         ),
                   ).animate().fadeIn(delay: 600.ms),
-  
+
                   const SizedBox(height: 60),
-  
+
                   // Loading Indicator
                   const SizedBox(
                     width: 40,
@@ -163,32 +182,22 @@ class _SplashScreenState extends State<SplashScreen> {
                 ],
               ),
             ),
-  
+
             // Version hint at bottom
             Positioned(
-              bottom: 40,
+              bottom: 24,
               left: 0,
               right: 0,
-              child: Column(
-                children: [
-                  Text(
-                    "PROTECTING YOUR DIGITAL LIFE",
-                    style: TextStyle(
-                      color: AppColors.textSecondary.withValues(alpha: 0.3),
-                      fontSize: 10,
-                      letterSpacing: 2,
-                      fontWeight: FontWeight.w800,
-                    ),
+              child: Center(
+                child: Text(
+                  _appVersion,
+                  style: const TextStyle(
+                    color: Colors.white24,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 2,
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    "v1.0.0",
-                    style: TextStyle(
-                      color: AppColors.textSecondary.withValues(alpha: 0.5),
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
+                ),
               ),
             ).animate().fadeIn(delay: 1.5.seconds),
           ],

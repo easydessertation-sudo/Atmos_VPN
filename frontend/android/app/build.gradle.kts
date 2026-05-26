@@ -9,7 +9,7 @@ plugins {
 android {
     namespace = "com.atmosvpn.app"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    ndkVersion = "28.0.12433566" // Hardcoded for 16KB page size support
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

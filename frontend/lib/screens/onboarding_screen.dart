@@ -177,7 +177,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     _currentPage == _pages.length - 1
                         ? ElevatedButton(
                             onPressed: () => Navigator.pushReplacementNamed(
-                                context, '/trial'),
+                                context, '/login'),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: AppColors.primaryBlue,
                               foregroundColor: Colors.white,

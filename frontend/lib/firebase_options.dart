@@ -66,13 +66,12 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyA0KfniLPuSDrRXWwlaiO-A_kbiuGIOX8U',
-    appId: '1:371315886913:ios:e08bd9e2f26958a8ae2fc0',
+    appId: '1:371315886913:ios:91db29cc1071fae0ae2fc0',
     messagingSenderId: '371315886913',
     projectId: 'atmos-vpn',
     storageBucket: 'atmos-vpn.firebasestorage.app',
     androidClientId: '371315886913-djsgn7m71ao2tegvcion4c5vra12bbpb.apps.googleusercontent.com',
-    iosClientId: '371315886913-gftksk78hcd6r9dlkvba96mjk93d7ng6.apps.googleusercontent.com',
-    iosBundleId: 'com.atmosvpn.app',
+    iosBundleId: 'com.vaavix.atmosvpn',
   );
 
 }

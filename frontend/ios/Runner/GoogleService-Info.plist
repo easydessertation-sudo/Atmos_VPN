@@ -2,18 +2,20 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>CLIENT_ID</key>
+	<string>371315886913-gftksk78hcd6r9dlkvba96mjk93d7ng6.apps.googleusercontent.com</string>
+	<key>REVERSED_CLIENT_ID</key>
+	<string>com.googleusercontent.apps.371315886913-gftksk78hcd6r9dlkvba96mjk93d7ng6</string>
+	<key>ANDROID_CLIENT_ID</key>
+	<string>371315886913-djsgn7m71ao2tegvcion4c5vra12bbpb.apps.googleusercontent.com</string>
 	<key>API_KEY</key>
 	<string>AIzaSyA0KfniLPuSDrRXWwlaiO-A_kbiuGIOX8U</string>
 	<key>GCM_SENDER_ID</key>
 	<string>371315886913</string>
-	<key>CLIENT_ID</key>
-	<string>755976865784-65qp3154btjjj2sov8tkme8khcuho0p9.apps.googleusercontent.com</string>
-	<key>REVERSED_CLIENT_ID</key>
-	<string>com.googleusercontent.apps.755976865784-65qp3154btjjj2sov8tkme8khcuho0p9</string>
 	<key>PLIST_VERSION</key>
 	<string>1</string>
 	<key>BUNDLE_ID</key>
-	<string>com.example.secureVpn</string>
+	<string>com.vaavix.atmosvpn</string>
 	<key>PROJECT_ID</key>
 	<string>atmos-vpn</string>
 	<key>STORAGE_BUCKET</key>
@@ -29,6 +31,6 @@
 	<key>IS_SIGNIN_ENABLED</key>
 	<true></true>
 	<key>GOOGLE_APP_ID</key>
-	<string>1:371315886913:ios:b1d90dec49dc0b24ae2fc0</string>
+	<string>1:371315886913:ios:91db29cc1071fae0ae2fc0</string>
 </dict>
 </plist>

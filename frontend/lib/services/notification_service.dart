@@ -5,6 +5,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../utils/api_service.dart';
 import '../utils/device_id.dart';
 import 'dart:io';
+import '../main.dart';
 
 @pragma('vm:entry-point')
 Future<void> notificationBackgroundHandler(RemoteMessage message) async {
@@ -12,11 +13,13 @@ Future<void> notificationBackgroundHandler(RemoteMessage message) async {
     String? title;
     String? body;
 
+    // If the message contains a notification block, the OS will automatically
+    // display it. We only need to manually show local notifications for data-only messages.
     if (message.notification != null) {
-      title = message.notification!.title;
-      body = message.notification!.body;
-    } else if (message.data.containsKey('title') ||
-        message.data.containsKey('body')) {
+      return; 
+    }
+
+    if (message.data.containsKey('title') || message.data.containsKey('body')) {
       title = message.data['title'];
       body = message.data['body'];
     }
@@ -72,6 +75,7 @@ Future<void> notificationBackgroundHandler(RemoteMessage message) async {
         title: title,
         body: body,
         notificationDetails: notificationDetails,
+        payload: message.data['type'],
       );
     }
   } catch (e) {}
@@ -108,7 +112,7 @@ class NotificationService {
     await _notificationsPlugin.initialize(
       settings: initializationSettings,
       onDidReceiveNotificationResponse: (NotificationResponse details) {
-        // Handle notification tap
+        _handleNotificationTap(details.payload);
       },
     );
 
@@ -155,6 +159,7 @@ class NotificationService {
             id: notification.hashCode.abs() % 100000,
             title: notification.title ?? '',
             body: notification.body ?? '',
+            payload: message.data['type']?.toString(),
           );
         }
       });
@@ -163,6 +168,28 @@ class NotificationService {
       _messaging.onTokenRefresh.listen((newToken) {
         registerToken();
       });
+
+      // Handle tap from background
+      FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+        _handleNotificationTap(message.data['type']?.toString());
+      });
+
+      // Handle tap from completely killed state
+      _messaging.getInitialMessage().then((RemoteMessage? message) {
+        if (message != null) {
+          Future.delayed(const Duration(milliseconds: 1000), () {
+            _handleNotificationTap(message.data['type']?.toString());
+          });
+        }
+      });
+    }
+  }
+
+  static void _handleNotificationTap(String? type) {
+    if (type == 'security') {
+      navigatorKey.currentState?.pushNamed('/security');
+    } else {
+      navigatorKey.currentState?.pushNamed('/notifications');
     }
   }
 

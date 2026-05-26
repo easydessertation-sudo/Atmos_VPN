@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../main.dart';
+import '../utils/ad_manager.dart';
 import '../utils/api_service.dart';
 import '../utils/design_system.dart';
 import '../widgets/app_container.dart';
@@ -163,7 +164,8 @@ class _ServerListScreenState extends State<ServerListScreen>
                     prefixIcon: Icon(Icons.search_rounded,
                         color: AppColors.textSecondary),
                     border: InputBorder.none,
-                    contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    contentPadding:
+                        EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   ),
                 ),
               ),
@@ -247,37 +249,54 @@ class _ServerListScreenState extends State<ServerListScreen>
                                 ),
                               );
                             }
-                             return ListView.builder(
+                            return ListView.builder(
                               padding: const EdgeInsets.all(16),
                               itemCount: list.length,
                               itemBuilder: (_, i) => _ServerCard(
                                 server: list[i],
                                 onConnect: () {
                                   final server = list[i];
-                                  final reqPlan = server['required_plan']?.toString() ?? 'free';
-                                  final userPlan = provider.userData?['plan']?.toString() ?? 'free';
+                                  final reqPlan =
+                                      server['required_plan']?.toString() ??
+                                          'free';
+                                  final userPlan =
+                                      provider.userData?['plan']?.toString() ??
+                                          'free';
 
                                   int planTier(String plan) {
                                     switch (plan.toLowerCase()) {
-                                      case 'free': return 0;
-                                      case 'starter': return 1;
-                                      case 'pro': return 2;
-                                      case 'premium': return 3;
-                                      default: return 0;
+                                      case 'free':
+                                        return 0;
+                                      case 'starter':
+                                        return 1;
+                                      case 'pro':
+                                        return 2;
+                                      case 'premium':
+                                        return 3;
+                                      default:
+                                        return 0;
                                     }
                                   }
 
-                                  final hasAccess = planTier(userPlan) >= planTier(reqPlan) || 
-                                                    (userPlan.toLowerCase() == 'free' && reqPlan.toLowerCase() == 'starter');
+                                  final hasAccess = planTier(userPlan) >=
+                                          planTier(reqPlan) ||
+                                      (userPlan.toLowerCase() == 'free' &&
+                                          reqPlan.toLowerCase() == 'starter');
 
                                   if (!hasAccess) {
                                     showDialog(
                                       context: context,
                                       builder: (ctx) => AlertDialog(
-                                        backgroundColor: AppColors.cardBackground,
-                                        title: const Text('Premium Location', style: TextStyle(color: Colors.white)),
-                                        content: Text('This server requires a ${reqPlan.toUpperCase()} plan or higher. Please upgrade to connect.',
-                                            style: const TextStyle(color: AppColors.textSecondary)),
+                                        backgroundColor:
+                                            AppColors.cardBackground,
+                                        title: const Text('Premium Location',
+                                            style:
+                                                TextStyle(color: Colors.white)),
+                                        content: Text(
+                                            'This server requires a ${reqPlan.toUpperCase()} plan or higher. Please upgrade to connect.',
+                                            style: const TextStyle(
+                                                color:
+                                                    AppColors.textSecondary)),
                                         actions: [
                                           TextButton(
                                             onPressed: () => Navigator.pop(ctx),
@@ -286,9 +305,15 @@ class _ServerListScreenState extends State<ServerListScreen>
                                           TextButton(
                                             onPressed: () {
                                               Navigator.pop(ctx);
-                                              Navigator.pushNamed(context, '/account/pricing');
+                                              Navigator.pushNamed(
+                                                  context, '/account/pricing');
                                             },
-                                            child: const Text('UPGRADE', style: TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.bold)),
+                                            child: const Text('UPGRADE',
+                                                style: TextStyle(
+                                                    color:
+                                                        AppColors.primaryBlue,
+                                                    fontWeight:
+                                                        FontWeight.bold)),
                                           ),
                                         ],
                                       ),
@@ -298,11 +323,28 @@ class _ServerListScreenState extends State<ServerListScreen>
 
                                   provider.setSelectedServer(
                                       Map<String, dynamic>.from(server));
-                                  provider.connect(server['id'].toString());
+
+                                  // Close the server list screen first
                                   if (widget.onSelectServer != null) {
                                     widget.onSelectServer!();
                                   } else if (Navigator.canPop(context)) {
                                     Navigator.pop(context);
+                                  }
+
+                                  // Show an interstitial ad for free users
+                                  // before the VPN tunnel starts.
+                                  if (provider.isFreeUser) {
+                                    AdManager.showInterstitialAd(
+                                      onAdDismissed: () {
+                                        Future.delayed(
+                                          const Duration(milliseconds: 500),
+                                          () => provider.connect(
+                                              server['id'].toString()),
+                                        );
+                                      },
+                                    );
+                                  } else {
+                                    provider.connect(server['id'].toString());
                                   }
                                 },
                               )
@@ -341,16 +383,22 @@ class _ServerCardState extends State<_ServerCard> {
 
     int planTier(String plan) {
       switch (plan.toLowerCase()) {
-        case 'free': return 0;
-        case 'starter': return 1;
-        case 'pro': return 2;
-        case 'premium': return 3;
-        default: return 0;
+        case 'free':
+          return 0;
+        case 'starter':
+          return 1;
+        case 'pro':
+          return 2;
+        case 'premium':
+          return 3;
+        default:
+          return 0;
       }
     }
 
-    final hasAccess = planTier(userPlan) >= planTier(reqPlan) || 
-                      (userPlan.toLowerCase() == 'free' && reqPlan.toLowerCase() == 'starter');
+    final hasAccess = planTier(userPlan) >= planTier(reqPlan) ||
+        (userPlan.toLowerCase() == 'free' &&
+            reqPlan.toLowerCase() == 'starter');
     final isPremiumServer = reqPlan.toLowerCase() != 'free';
     final ping = widget.server['ping_ms'] ?? 0;
 
@@ -455,10 +503,10 @@ class _ServerCardState extends State<_ServerCard> {
                     ],
                   ),
                   const SizedBox(height: 4),
-                   if (userPlan.toLowerCase() == 'free' && reqPlan.toLowerCase() == 'starter')
-                    const Icon(Icons.ondemand_video_rounded,
-                        color: Colors.amber, size: 20)
-                   else if (!hasAccess)
+                  if (userPlan.toLowerCase() == 'free' &&
+                      reqPlan.toLowerCase() == 'starter')
+                    const Icon(Icons.lock, color: Colors.amber, size: 20)
+                  else if (!hasAccess)
                     const Icon(Icons.lock_rounded,
                         color: Colors.amber, size: 20)
                   else

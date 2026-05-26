@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import '../utils/design_system.dart';
 import '../utils/api_service.dart';
 import '../widgets/password_text_field.dart';
@@ -89,14 +90,72 @@ class _SignupScreenState extends State<SignupScreen> {
   }
 
   Future<void> _handleSocialLogin(String provider) async {
-    if (provider != 'Google') {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Apple Sign In coming soon!'),
-          backgroundColor: Colors.black54,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+    if (provider == 'Apple') {
+      setState(() {
+        _isLoading = true;
+        _error = null;
+      });
+      try {
+        final credential = await SignInWithApple.getAppleIDCredential(
+          scopes: [
+            AppleIDAuthorizationScopes.email,
+            AppleIDAuthorizationScopes.fullName,
+          ],
+        );
+
+        final idToken = credential.identityToken;
+        if (idToken == null) {
+          setState(() {
+            _isLoading = false;
+            _error = 'Could not get Apple ID token. Please try again.';
+          });
+          return;
+        }
+
+        final email = credential.email;
+        final fullName = credential.givenName != null ? '${credential.givenName} ${credential.familyName ?? ''}'.trim() : null;
+
+        final response = await ApiService.appleVerify(idToken, email: email, fullName: fullName);
+
+        if (response['success'] == true) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Row(
+                  children: [
+                    const Icon(Icons.check_circle_outline_rounded,
+                        color: Colors.white, size: 20),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        response['data']?['is_new_user'] == true
+                            ? 'Account created! Welcome to AtmosVPN.'
+                            : 'Welcome back, ${response['data']?['user']?['full_name'] ?? ''}!',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ),
+                backgroundColor: AppColors.success,
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+            await context.read<VPNProvider>().fetchProfile();
+            if (mounted) Navigator.pushNamedAndRemoveUntil(context, '/dashboard', (route) => false);
+          }
+        } else {
+          final msg = response['message'] as String? ?? '';
+          setState(() => _error = msg.isNotEmpty ? msg : 'Apple sign-up failed. Please try again.');
+        }
+      } catch (e) {
+        if (e is SignInWithAppleAuthorizationException && e.code == AuthorizationErrorCode.canceled) {
+           setState(() => _isLoading = false);
+           return;
+        }
+        setState(() => _error = 'Apple sign-up failed: $e');
+      } finally {
+        if (mounted) setState(() => _isLoading = false);
+      }
       return;
     }
 
@@ -316,9 +375,11 @@ class _SignupScreenState extends State<SignupScreen> {
                   'Sign up with Google',
                   Icons.g_mobiledata_rounded,
                   () => _handleSocialLogin('Google')),
-              const SizedBox(height: 16),
-              _buildSocialButton('Sign up with Apple', Icons.apple_rounded,
-                  () => _handleSocialLogin('Apple')),
+              if (Theme.of(context).platform != TargetPlatform.android) ...[
+                const SizedBox(height: 16),
+                _buildSocialButton('Sign up with Apple', Icons.apple_rounded,
+                    () => _handleSocialLogin('Apple')),
+              ],
 
               const SizedBox(height: 48),
 

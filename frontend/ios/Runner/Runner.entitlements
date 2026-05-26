@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- VPN Capability - CRITICAL for WireGuard -->
+    <key>com.apple.developer.networking.networkextension</key>
+    <array>
+        <string>personal-vpn</string>
+        <string>packet-tunnel-provider</string>
+    </array>
+    
+    <!-- App Groups - Required for VPN communication between main app and tunnel -->
+    <key>com.apple.security.application-groups</key>
+    <array>
+        <string>group.com.vaavix.atmosvpn</string>
+    </array>
+    
+    <!-- Keychain Sharing - For storing WireGuard keys securely -->
+    <key>keychain-access-groups</key>
+    <array>
+        <string>$(AppIdentifierPrefix)com.vaavix.atmosvpn</string>
+    </array>
+    
+    <!-- Apple Sign-In - For future implementation -->
+    <key>com.apple.developer.applesignin</key>
+    <array>
+        <string>Default</string>
+    </array>
+    
+    <!-- Associated Domains - For deep linking (payment redirects, etc.) -->
+    <key>com.apple.developer.associated-domains</key>
+    <array>
+        <string>applinks:atmosvpn.com</string>
+    </array>
+</dict>
+</plist>

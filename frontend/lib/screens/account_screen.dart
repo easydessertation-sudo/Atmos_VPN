@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io' show File;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:image_picker/image_picker.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../utils/design_system.dart';
 import '../utils/api_service.dart';
 import '../widgets/password_text_field.dart';
@@ -25,6 +26,18 @@ class _AccountScreenState extends State<AccountScreen> {
   void initState() {
     super.initState();
     _checkLoginType();
+    _loadAppVersion();
+  }
+
+  String _appVersion = 'Loading...';
+
+  Future<void> _loadAppVersion() async {
+    final packageInfo = await PackageInfo.fromPlatform();
+    if (mounted) {
+      setState(() {
+        _appVersion = 'AtmosVPN Version ${packageInfo.version} (Build ${packageInfo.buildNumber})';
+      });
+    }
   }
 
   Future<void> _checkLoginType() async {
@@ -635,9 +648,9 @@ class _AccountScreenState extends State<AccountScreen> {
               const SizedBox(height: 48),
               _buildLogoutButton(context).animate().fadeIn(delay: 600.ms),
               const SizedBox(height: 20),
-              const Text(
-                'AtmosVPN Version 1.0.0 (Build 45)',
-                style: TextStyle(
+              Text(
+                _appVersion,
+                style: const TextStyle(
                     color: AppColors.textSecondary,
                     fontSize: 11,
                     fontWeight: FontWeight.w600),

@@ -11,8 +11,26 @@ class AdManager {
           ? 'ca-app-pub-3940256099942544/9257395921'
           : 'ca-app-pub-3940256099942544/5533782606'; // iOS test ID
     }
-    if (Platform.isAndroid || Platform.isIOS) {
+    if (Platform.isAndroid) {
       return 'ca-app-pub-4377728206732134/3476657293';
+    }
+    if (Platform.isIOS) {
+      return 'ca-app-pub-4377728206732134/9111893241';
+    }
+    throw UnsupportedError('Unsupported platform');
+  }
+
+  static String get bannerAdUnitId {
+    if (kDebugMode) {
+      return Platform.isAndroid
+          ? 'ca-app-pub-3940256099942544/6300978111'
+          : 'ca-app-pub-3940256099942544/2934735716'; // iOS test ID
+    }
+    if (Platform.isAndroid) {
+      return 'ca-app-pub-4377728206732134/1518602976';
+    }
+    if (Platform.isIOS) {
+      return 'ca-app-pub-4377728206732134/6501584925';
     }
     throw UnsupportedError('Unsupported platform');
   }
@@ -23,8 +41,11 @@ class AdManager {
           ? 'ca-app-pub-3940256099942544/1033173712'
           : 'ca-app-pub-3940256099942544/4411468910'; // iOS test ID
     }
-    if (Platform.isAndroid || Platform.isIOS) {
+    if (Platform.isAndroid) {
       return 'ca-app-pub-4377728206732134/8359342524';
+    }
+    if (Platform.isIOS) {
+      return 'ca-app-pub-4377728206732134/1233403224';
     }
     throw UnsupportedError('Unsupported platform');
   }
@@ -48,8 +69,14 @@ class AdManager {
     );
   }
 
+  static DateTime? _lastInterstitialDismissedAt;
+
   static void showAppOpenAdIfAvailable() {
     if (kIsWeb) return;
+    if (_lastInterstitialDismissedAt != null && 
+        DateTime.now().difference(_lastInterstitialDismissedAt!).inSeconds < 5) {
+      return;
+    }
     if (_appOpenAd == null) {
       loadAppOpenAd();
       return;
@@ -96,9 +123,11 @@ class AdManager {
       if (onAdDismissed != null) onAdDismissed();
       return;
     }
-    if (_isInterstitialAdLoaded && _interstitialAd != null) {
+
+    void _doShow() {
       _interstitialAd!.fullScreenContentCallback = FullScreenContentCallback(
         onAdDismissedFullScreenContent: (ad) {
+          _lastInterstitialDismissedAt = DateTime.now();
           ad.dispose();
           _isInterstitialAdLoaded = false;
           _interstitialAd = null;
@@ -106,6 +135,7 @@ class AdManager {
           if (onAdDismissed != null) onAdDismissed();
         },
         onAdFailedToShowFullScreenContent: (ad, error) {
+          _lastInterstitialDismissedAt = DateTime.now();
           ad.dispose();
           _isInterstitialAdLoaded = false;
           _interstitialAd = null;
@@ -114,9 +144,34 @@ class AdManager {
         },
       );
       _interstitialAd!.show();
+    }
+
+    if (_isInterstitialAdLoaded && _interstitialAd != null) {
+      // Ad is ready — show immediately
+      _doShow();
     } else {
-      if (onAdDismissed != null) onAdDismissed();
-      loadInterstitialAd();
+      // Ad is not ready yet (still loading from previous reload).
+      // Poll every 250ms for up to 3 seconds, then give up.
+      int attempts = 0;
+      const maxAttempts = 12; // 12 × 250ms = 3 seconds
+
+      Future<void> _poll() async {
+        if (_isInterstitialAdLoaded && _interstitialAd != null) {
+          _doShow();
+          return;
+        }
+        if (attempts >= maxAttempts) {
+          // Timed out — proceed without showing an ad
+          loadInterstitialAd();
+          if (onAdDismissed != null) onAdDismissed();
+          return;
+        }
+        attempts++;
+        await Future.delayed(const Duration(milliseconds: 250));
+        _poll();
+      }
+
+      _poll();
     }
   }
 }

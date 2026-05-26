@@ -149,9 +149,13 @@ class _AtmosVPNAppState extends State<AtmosVPNApp> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // if (state == AppLifecycleState.resumed) {
-    //   AdManager.showAppOpenAdIfAvailable();
-    // }
+    if (state == AppLifecycleState.resumed) {
+      // Only show the app open ad for free users
+      final vpn = navigatorKey.currentContext?.read<VPNProvider>();
+      if (vpn != null && vpn.isFreeUser) {
+        AdManager.showAppOpenAdIfAvailable();
+      }
+    }
   }
 
   @override
@@ -523,10 +527,17 @@ class VPNProvider with ChangeNotifier {
 
     // Clear any old keys that may have been generated without proper clamping.
     // Standard WireGuard base64 keys are always exactly 44 characters.
+    // Also clear keys generated with the old double-clamping bug (version key check).
     final legacyKey = prefs.getString('wg_private_key');
+    final legacyVersion = prefs.getString('wg_key_version');
     if (legacyKey != null && legacyKey.length != 44) {
       debugPrint(
           '[WG] Clearing legacy incompatible keys (length: ${legacyKey.length}).');
+      await prefs.remove('wg_private_key');
+      await prefs.remove('wg_public_key');
+    } else if (legacyVersion != 'v2') {
+      // v2 = fixed key generation without double-clamping
+      debugPrint('[WG] Clearing old keys generated with buggy double-clamping algorithm.');
       await prefs.remove('wg_private_key');
       await prefs.remove('wg_public_key');
     }
@@ -535,29 +546,27 @@ class VPNProvider with ChangeNotifier {
     String? pub = prefs.getString('wg_public_key');
 
     if (priv == null || pub == null) {
-      // Generate a raw 32-byte Curve25519 private key
+      // Use the X25519 library to generate a key pair.
+      // IMPORTANT: Do NOT manually clamp and then call newKeyPairFromSeed —
+      // the library clamps internally in newKeyPairFromSeed, which causes
+      // double-clamping and a mismatch between the stored private key and the
+      // public key sent to the server.
+      // Instead, generate a full keypair in one call and extract both keys
+      // from the SAME object so they are guaranteed to be a matched pair.
       final algorithm = X25519();
       final keyPair = await algorithm.newKeyPair();
-      final rawPrivBytes =
+
+      final privateKeyBytes =
           Uint8List.fromList(await keyPair.extractPrivateKeyBytes());
+      final publicKeyObj = await keyPair.extractPublicKey();
 
-      // Apply WireGuard's REQUIRED Curve25519 bit-clamping to the private key.
-      // Without this, the key exchange produces a wrong shared secret.
-      // Ref: https://cr.yp.to/ecdh/curve25519-20060209.pdf
-      rawPrivBytes[0] &= 248; // Clear bits 0, 1, 2
-      rawPrivBytes[31] &= 127; // Clear bit 255
-      rawPrivBytes[31] |= 64; // Set bit 254
-
-      // Derive the correct public key from the clamped private key
-      final clampedKeyPair = await algorithm.newKeyPairFromSeed(rawPrivBytes);
-      final publicKeyObj = await clampedKeyPair.extractPublicKey();
-
-      priv = base64Encode(rawPrivBytes);
+      priv = base64Encode(privateKeyBytes);
       pub = base64Encode(publicKeyObj.bytes);
 
       await prefs.setString('wg_private_key', priv);
       await prefs.setString('wg_public_key', pub);
-      debugPrint('[WG] Generated new WireGuard-compliant key pair.');
+      await prefs.setString('wg_key_version', 'v2');
+      debugPrint('[WG] Generated new WireGuard key pair (matched pair).');
       debugPrint('[WG] Public Key: $pub');
     } else {
       debugPrint('[WG] Using cached key pair. Public Key: $pub');
@@ -603,19 +612,16 @@ class VPNProvider with ChangeNotifier {
         '[Interface]\nPrivateKey = ${privateKey.trim()}\nDNS = $dnsToInject\nMTU = 1280');
 
     // 6. Inject Peer settings
-    // We use a split default route to avoid Android routing table conflicts.
-    // CRITICAL: We MUST include ::/1 and 8000::/1 to route IPv6 traffic, otherwise mobile carriers will stall.
-    const allowedIPs = '0.0.0.0/1, 128.0.0.0/1, ::/1, 8000::/1';
-    if (!finalConfig.contains('AllowedIPs')) {
-      finalConfig = finalConfig.replaceFirst('[Peer]',
-          '[Peer]\nAllowedIPs = $allowedIPs\nPersistentKeepalive = 25');
+    // Force AllowedIPs to 0.0.0.0/0 to prevent IPv6 blackholing on mobile networks.
+    finalConfig = finalConfig.replaceAll(RegExp(r'AllowedIPs\s*=\s*[^\n]*\n?'), '');
+    const allowedIPs = '0.0.0.0/0';
+    
+    if (!finalConfig.contains('PersistentKeepalive')) {
+      finalConfig = finalConfig.replaceFirst(
+          '[Peer]', '[Peer]\nAllowedIPs = $allowedIPs\nPersistentKeepalive = 25');
     } else {
-      finalConfig = finalConfig.replaceAll(
-          RegExp(r'AllowedIPs\s*=\s*[^\n]*'), 'AllowedIPs = $allowedIPs');
-      if (!finalConfig.contains('PersistentKeepalive')) {
-        finalConfig = finalConfig.replaceFirst(
-            '[Peer]', '[Peer]\nPersistentKeepalive = 25');
-      }
+      finalConfig = finalConfig.replaceFirst(
+          '[Peer]', '[Peer]\nAllowedIPs = $allowedIPs');
     }
 
     // 7. Check for Ngrok
@@ -838,6 +844,62 @@ class VPNProvider with ChangeNotifier {
       return;
     }
 
+    // --- PROMINENT DISCLOSURE CHECK ---
+    final prefs = await SharedPreferences.getInstance();
+    final hasAccepted = prefs.getBool('has_accepted_vpn_disclosure') ?? false;
+
+    if (!hasAccepted) {
+      final context = navigatorKey.currentContext;
+      if (context != null) {
+        bool? accepted = await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => AlertDialog(
+            backgroundColor: const Color(0xFF1E293B),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Row(
+              children: [
+                Icon(Icons.shield_rounded, color: Color(0xFF3B82F6)),
+                SizedBox(width: 8),
+                Text('VPN Permission', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
+              ],
+            ),
+            content: const Text(
+              'AtmosVPN requires the use of the Android VpnService to create a secure tunnel and protect your internet traffic.\n\n'
+              'We do NOT collect, store, or share your browsing history or traffic data. This permission is strictly used to encrypt your connection.\n\n'
+              'Do you agree to proceed?',
+              style: TextStyle(color: Colors.white70, fontSize: 14, height: 1.5),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel', style: TextStyle(color: Colors.white54, fontWeight: FontWeight.bold)),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF3B82F6),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                child: const Text('Agree', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        );
+        
+        if (accepted == true) {
+          await prefs.setBool('has_accepted_vpn_disclosure', true);
+        } else {
+          _status = 'Disconnected';
+          _lastError = 'VPN permission denied by user.';
+          notifyListeners();
+          return; // Cancelled
+        }
+      }
+    }
+    // ---------------------------------
+
     return _actualConnect(serverId, mode: mode);
   }
 
@@ -861,6 +923,8 @@ class VPNProvider with ChangeNotifier {
         final kp = await _getOrCreateKeyPair();
         privateKey = kp.$1;
         publicKey = kp.$2;
+        debugPrint('[KEY-CHECK] Private Key (first 8 chars): ${privateKey.substring(0, 8)}...');
+        debugPrint('[KEY-CHECK] Public Key being sent to /provision: $publicKey');
       }
 
       // 2. Revoke any existing stale config for this server
@@ -913,15 +977,33 @@ class VPNProvider with ChangeNotifier {
       final provData = provResponse['data'] as Map<String, dynamic>?;
 
       // 3. Poll job if backend is async
+      final provStatus = provData?['status']?.toString();
       final jobId = provData?['job_id']?.toString();
-      if (jobId != null) {
+
+      if (provStatus == 'provisioning' && jobId != null) {
         _status = 'Configuring...';
         notifyListeners();
         bool done = false;
         for (int i = 0; i < 20 && !done; i++) {
           await Future.delayed(const Duration(seconds: 1));
           final jr = await ApiService.getVpnJob(jobId);
-          final js = jr['data']?['status']?.toString();
+          final js = jr['data']?['status']?.toString() ?? jr['status']?.toString();
+          if (js == 'completed') done = true;
+          if (js == 'failed') throw Exception('Server provisioning failed.');
+        }
+        if (!done) throw Exception('Provisioning timeout.');
+      } else if (provStatus == 'active') {
+        // Active immediately! Skip polling.
+        debugPrint('[VPN] Provision returned active instantly. Skipping poll.');
+      } else if (jobId != null) {
+        // Fallback polling if status is missing but job_id is present
+        _status = 'Configuring...';
+        notifyListeners();
+        bool done = false;
+        for (int i = 0; i < 20 && !done; i++) {
+          await Future.delayed(const Duration(seconds: 1));
+          final jr = await ApiService.getVpnJob(jobId);
+          final js = jr['data']?['status']?.toString() ?? jr['status']?.toString();
           if (js == 'completed') done = true;
           if (js == 'failed') throw Exception('Server provisioning failed.');
         }
@@ -947,12 +1029,21 @@ class VPNProvider with ChangeNotifier {
           // Apply security settings and private key to the config string
           final fullConfig = _applySecuritySettings(rawConfig, privateKey);
 
-          // Parse server address + port from Endpoint line
-          String serverAddress = serverId; // fallback
-          final epMatch = RegExp(r'Endpoint\s*=\s*([^:\n\r]+):(\d+)')
-              .firstMatch(fullConfig);
-          if (epMatch != null) {
-            serverAddress = (epMatch.group(1) ?? serverAddress).trim();
+          // KEY MISMATCH CHECK — confirm private key is in the final config
+          final privKeyInConfig = fullConfig.contains(privateKey.trim());
+          debugPrint('[KEY-CHECK] Private key present in final tunnel config: $privKeyInConfig');
+          if (!privKeyInConfig) {
+            debugPrint('[KEY-CHECK] ⚠️ MISMATCH: Private key NOT found in config! Tunnel will fail handshake.');
+          }
+
+          // Pass the friendly server name so the Android notification can display it
+          final srvData = provData?['server'] as Map<String, dynamic>? ?? _selectedServer;
+          String serverAddressToPass = 'Unknown Server';
+          if (srvData != null && srvData['city'] != null) {
+            serverAddressToPass = '${srvData['city']}, ${srvData['country']}';
+          } else {
+            // Fallback to serverId if no name found
+            serverAddressToPass = serverId;
           }
 
           if (!fullConfig.contains('Address')) {
@@ -965,11 +1056,15 @@ class VPNProvider with ChangeNotifier {
               fullConfig.replaceAll(privateKey, cleanPrivateKey);
 
           // 4b. Notify Backend to ACTIVATE the session and add peer to server
+          // BACKEND DEV UPDATE: provisionVpn() already activates it instantly.
+          // Calling connect() here may conflict or reset the peer!
+          /*
           try {
             await ApiService.connect(serverId, mode: mode);
             await Future.delayed(const Duration(
                 seconds: 2)); // Give server time to update iptables/wg
           } catch (e) {}
+          */
 
           // 5. Start the Native Tunnel
           // Retry loop: on Android, the first call may show the VPN permission dialog.
@@ -978,7 +1073,7 @@ class VPNProvider with ChangeNotifier {
           for (int attempt = 1; attempt <= 2 && !vpnStarted; attempt++) {
             try {
               await WireGuardFlutter.instance.startVpn(
-                serverAddress: serverAddress,
+                serverAddress: serverAddressToPass,
                 wgQuickConfig: configToUse,
                 providerBundleIdentifier: 'com.atmosvpn.app.network-extension',
               );
@@ -1044,7 +1139,17 @@ class VPNProvider with ChangeNotifier {
       }
     } catch (e) {
       _status = 'Connection Failed';
-      _lastError = e.toString().replaceAll('Exception: ', '');
+      String errorText = e.toString();
+      
+      // Sanitize ugly system/network errors so they don't show on the UI
+      if (errorText.contains('errno = 103') || errorText.contains('Software caused connection abort')) {
+        _lastError = 'Connection interrupted while switching servers. Please try again.';
+      } else if (errorText.contains('SocketException') || errorText.contains('ClientException')) {
+        _lastError = 'Network connection failed. Please check your internet.';
+      } else {
+        _lastError = errorText.replaceAll('Exception: ', '');
+      }
+      
       _isConnected = false;
       notifyListeners();
     }
@@ -1054,12 +1159,17 @@ class VPNProvider with ChangeNotifier {
   Future<void> disconnect() async {
     _status = 'Disconnecting...';
     notifyListeners();
-    try {
-      if (!kIsWeb && _wgInitialized) {
-        await WireGuardFlutter.instance.stopVpn();
-      }
-      await ApiService.disconnect();
-    } catch (_) {}
+    // Run the heavy native IPC calls (stopVpn + API) off the main UI thread
+    // so they cannot block the UI and cause an ANR, especially during
+    // Activity transitions (e.g. after an interstitial ad closes).
+    await Future.microtask(() async {
+      try {
+        if (!kIsWeb && _wgInitialized) {
+          await WireGuardFlutter.instance.stopVpn();
+        }
+        await ApiService.disconnect();
+      } catch (_) {}
+    });
     _isConnected = false;
     _status = 'Disconnected';
     _currentServer = 'None';
@@ -1071,7 +1181,11 @@ class VPNProvider with ChangeNotifier {
       _userManuallyDisconnected = true;
       if (_isFreeUser) {
         AdManager.showInterstitialAd(onAdDismissed: () {
-          disconnect();
+          // 1000ms gives Android time to fully tear down the AdActivity
+          // before we send native IPC commands to the WireGuard VPN service.
+          Future.delayed(const Duration(milliseconds: 1000), () {
+            disconnect();
+          });
         });
       } else {
         disconnect();
@@ -1097,7 +1211,9 @@ class VPNProvider with ChangeNotifier {
       if (serverId != null) {
         if (_isFreeUser) {
           AdManager.showInterstitialAd(onAdDismissed: () {
-            connect(serverId);
+            Future.delayed(const Duration(milliseconds: 300), () {
+              connect(serverId);
+            });
           });
         } else {
           connect(serverId);
