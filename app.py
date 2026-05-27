@@ -2006,6 +2006,10 @@ def disconnect(
         # Update user's total bandwidth used
         user.bandwidth_used_bytes = (user.bandwidth_used_bytes or 0) + s.bytes_down + s.bytes_up
 
+    # ENFORCEMENT: Disconnecting instantly destroys any remaining time for free tier users
+    if user.plan == "free":
+        user.vpn_expiration_time = datetime.utcnow()
+
     db.commit()
     return success(msg="Disconnected")
 
@@ -2137,29 +2141,58 @@ def get_session_time(user: User = Depends(get_current_user)):
     return success({"remaining_seconds": remaining})
 
 
+class WatchAdRequest(BaseModel):
+    tier: str = "free"
+
 @app.post("/api/rewards/watch-ad", tags=["Rewards"])
-def watch_ad(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def watch_ad(req: WatchAdRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """
     Called when the frontend verifies an AdMob ad was watched.
-    Adds the configured bonus minutes to the user's current vpn_expiration_time.
     """
     now = datetime.utcnow()
-    reward_minutes = _app_config.get("ad_bonus_minutes", 30)
     
-    if not user.vpn_expiration_time or user.vpn_expiration_time < now:
-        user.vpn_expiration_time = now + timedelta(minutes=reward_minutes)
-    else:
-        user.vpn_expiration_time += timedelta(minutes=reward_minutes)
+    if req.tier == "starter":
+        from redis_client import get_redis
+        rc = get_redis()
+        key = f"user:{user.id}:starter_ads"
         
-    db.commit()
-    remaining = int((user.vpn_expiration_time - now).total_seconds())
-    return success(
-        {
-            "reward_minutes": reward_minutes,
-            "remaining_seconds": remaining
-        }, 
-        msg=f"{reward_minutes} bonus minutes credited!"
-    )
+        # Track ads watched in redis (expires in 24 hours if they abandon it)
+        count = rc.incr(key) if rc else 2
+        if rc and count == 1:
+            rc.expire(key, 86400)
+            
+        if count >= 2:
+            if rc:
+                rc.delete(key) # reset for next time
+            user.vpn_expiration_time = now + timedelta(minutes=45)
+            db.commit()
+            return success({
+                "reward_minutes": 45,
+                "remaining_seconds": 2700,
+                "ads_watched": count,
+                "ads_required": 2
+            }, msg="45 minutes starter VPN credited!")
+        else:
+            return success({
+                "reward_minutes": 0,
+                "remaining_seconds": 0,
+                "ads_watched": count,
+                "ads_required": 2
+            }, msg="Watch 1 more ad to get 45 minutes!")
+            
+    else:
+        # Default Free Tier Logic: 1 ad = 30 minutes, resets instantly (does not accumulate indefinitely)
+        user.vpn_expiration_time = now + timedelta(minutes=30)
+        db.commit()
+        return success(
+            {
+                "reward_minutes": 30,
+                "remaining_seconds": 1800,
+                "ads_watched": 1,
+                "ads_required": 1
+            }, 
+            msg="30 minutes free VPN credited!"
+        )
 
 
 
