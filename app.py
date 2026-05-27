@@ -3032,11 +3032,8 @@ def get_notifications(
     page  = max(1, page)
     limit = max(1, min(limit, 100))
 
-    # Seed default notifications on first visit
-    total_count = db.query(Notification).filter_by(user_id=str(user.id)).count()
-    if total_count == 0:
-        _seed_default_notifications(user, db)
-        total_count = db.query(Notification).filter_by(user_id=str(user.id)).count()
+
+
 
     q = db.query(Notification).filter_by(user_id=str(user.id))
     if unread_only:
