@@ -181,8 +181,8 @@ ETH_IFACE=$(ip route ls default | awk '{print $5}' | head -n 1)
 # ── Write wg0.conf ───────────────────────────────────────────────
 cat > /etc/wireguard/wg0.conf << EOF
 [Interface]
-Address = 10.8.0.1/24
-SaveConfig = true
+Address = 10.{subnet_block}.0.1/24
+SaveConfig = false
 ListenPort = 51820
 PrivateKey = $PRIVKEY
 PostUp   = iptables -A FORWARD -i wg0 -j ACCEPT; iptables -t nat -A POSTROUTING -o $ETH_IFACE -j MASQUERADE
@@ -290,6 +290,10 @@ async def setup_wireguard(s: dict) -> str | None:
     password = s["ssh_password"]
     name     = s["name"]
 
+    import hashlib
+    server_hash = int(hashlib.md5(s["id"].encode()).hexdigest(), 16)
+    subnet_block = 8 + (server_hash % 240)
+
     logger.info(f"  [SSH] Connecting to {name} ({ip}) as {user}...")
     try:
         async with asyncssh.connect(
@@ -300,7 +304,8 @@ async def setup_wireguard(s: dict) -> str | None:
             connect_timeout=30,
         ) as conn:
             logger.info(f"  [SSH] Connected to {name}! Running WireGuard setup (this takes ~30s)...")
-            result = await conn.run(WG_SETUP_SCRIPT, timeout=120)
+            script = WG_SETUP_SCRIPT.replace("{subnet_block}", str(subnet_block))
+            result = await conn.run(script, timeout=120)
 
             output = result.stdout or ""
             stderr = result.stderr or ""
