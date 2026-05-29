@@ -508,7 +508,11 @@ def send_push_notification(user_id: str, title: str, message: str, notification_
             from firebase_admin import messaging
             
             # Prepare data payload (must be key-value pairs of strings)
-            data = {"type": notification_type}
+            data = {
+                "type": notification_type,
+                "title": title,
+                "body": message
+            }
             if notification_id:
                 data["id"] = str(notification_id)
             if meta:
@@ -519,35 +523,47 @@ def send_push_notification(user_id: str, title: str, message: str, notification_
                 except Exception:
                     data["meta"] = str(meta)
 
-            multicast_msg = messaging.MulticastMessage(
-                notification=messaging.Notification(
-                    title=title,
-                    body=message,
-                ),
-                data=data,
-                android=messaging.AndroidConfig(
-                    priority="high",
-                    notification=messaging.AndroidNotification(
-                        channel_id="atmos_vpn_notifications",
-                        sound="default",
+            # Build one Message per token (exactly as frontend team specified)
+            messages = []
+            for token in fcm_tokens:
+                msg = messaging.Message(
+                    # TOP-LEVEL notification - REQUIRED for background display on Android
+                    notification=messaging.Notification(
+                        title=title,
+                        body=message,
                     ),
-                ),
-                apns=messaging.APNSConfig(
-                    headers={"apns-priority": "10"},
-                ),
-                tokens=fcm_tokens,
-            )
-            response = messaging.send_each_for_multicast(multicast_msg)
-            logger.info(f"FCM Multicast sent: success={response.success_count}, failure={response.failure_count}")
+                    # Android-specific: high priority + channel_id + sound
+                    android=messaging.AndroidConfig(
+                        priority="high",
+                        notification=messaging.AndroidNotification(
+                            channel_id="atmos_vpn_notifications",
+                            sound="default",
+                        ),
+                    ),
+                    # iOS: highest priority
+                    apns=messaging.APNSConfig(
+                        headers={"apns-priority": "10"},
+                    ),
+                    # Data fallback (title/body included for Flutter onMessage handler)
+                    data=data,
+                    token=token,
+                )
+                messages.append(msg)
 
-            # Clean up failed tokens
-            if response.failure_count > 0:
+            # Send all messages in a batch
+            response = messaging.send_each(messages)
+            success_count = sum(1 for r in response.responses if r.success)
+            failure_count = sum(1 for r in response.responses if not r.success)
+            logger.info(f"FCM sent: success={success_count}, failure={failure_count}")
+
+            # Clean up invalid/expired tokens
+            if failure_count > 0:
                 invalid_tokens = []
                 for idx, resp in enumerate(response.responses):
                     if not resp.success:
-                        # Unregistered or invalid tokens
                         invalid_tokens.append(fcm_tokens[idx])
-                
+                        logger.warning(f"FCM token failed: {resp.exception}")
+
                 if invalid_tokens:
                     db.query(FCMToken).filter(FCMToken.fcm_token.in_(invalid_tokens)).delete(synchronize_session=False)
                     db.commit()
@@ -555,12 +571,12 @@ def send_push_notification(user_id: str, title: str, message: str, notification_
 
             return {
                 "success": True,
-                "sent": response.success_count,
-                "failed": response.failure_count,
+                "sent": success_count,
+                "failed": failure_count,
             }
         else:
-            # Simulation Mode
-            logger.info(f"[SIMULATION] FCM Push sent to {len(fcm_tokens)} devices: Title='{title}', Message='{message}', Type='{notification_type}'")
+            # Simulation Mode (no Firebase credentials)
+            logger.info(f"[SIMULATION] FCM Push → {len(fcm_tokens)} devices | Title='{title}' | Type='{notification_type}'")
             return {"success": True, "simulated": len(fcm_tokens)}
 
     except Exception as e:

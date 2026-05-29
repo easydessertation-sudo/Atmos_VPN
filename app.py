@@ -3005,6 +3005,107 @@ def test_trigger_notification(
     }
 
 
+class DirectPushRequest(BaseModel):
+    title: str
+    body: str
+    notification_type: str = "security"
+    fcm_token: str = None   # optional — if not given, uses all tokens for the logged-in user
+
+
+@app.post("/api/test/notifications/push-direct", tags=["Test"])
+def test_push_direct(
+    body: DirectPushRequest,
+    user: User    = Depends(get_current_user),
+    db:   Session = Depends(get_db),
+):
+    """
+    TEST ENDPOINT: Send a real FCM push notification DIRECTLY (no Celery, no Redis needed).
+    Useful for local Postman testing to verify the exact FCM payload structure.
+
+    - If fcm_token is provided → sends only to that specific device.
+    - If fcm_token is omitted  → sends to ALL registered devices for the logged-in user.
+    """
+    from tasks import _init_firebase
+    from models import FCMToken
+    import json as _json
+
+    if not _init_firebase():
+        return {
+            "success": False,
+            "message": "Firebase not initialized. Check your FIREBASE_CREDENTIALS_JSON env variable.",
+        }
+
+    from firebase_admin import messaging
+
+    # Determine tokens to send to
+    if body.fcm_token:
+        tokens = [body.fcm_token]
+    else:
+        rows = db.query(FCMToken).filter_by(user_id=str(user.id)).all()
+        tokens = [r.fcm_token for r in rows]
+
+    if not tokens:
+        return {
+            "success": False,
+            "message": "No FCM tokens found. Register a device first via POST /api/users/fcm-token",
+        }
+
+    # Build data payload
+    data = {
+        "type":  body.notification_type,
+        "title": body.title,
+        "body":  body.body,
+    }
+
+    # Build one Message per token — EXACT structure the frontend team requested
+    messages = []
+    for token in tokens:
+        msg = messaging.Message(
+            notification=messaging.Notification(
+                title=body.title,
+                body=body.body,
+            ),
+            android=messaging.AndroidConfig(
+                priority="high",
+                notification=messaging.AndroidNotification(
+                    channel_id="atmos_vpn_notifications",
+                    sound="default",
+                ),
+            ),
+            apns=messaging.APNSConfig(
+                headers={"apns-priority": "10"},
+            ),
+            data=data,
+            token=token,
+        )
+        messages.append(msg)
+
+    # Send directly (no Celery)
+    response = messaging.send_each(messages)
+    success_count = sum(1 for r in response.responses if r.success)
+    failure_count = sum(1 for r in response.responses if not r.success)
+
+    errors = []
+    for idx, r in enumerate(response.responses):
+        if not r.success:
+            errors.append({"token": tokens[idx][:20] + "...", "error": str(r.exception)})
+
+    return {
+        "success":       success_count > 0,
+        "sent":          success_count,
+        "failed":        failure_count,
+        "tokens_tried":  len(tokens),
+        "errors":        errors,
+        "payload_sent": {
+            "title":    body.title,
+            "body":     body.body,
+            "type":     body.notification_type,
+            "priority": "high",
+            "channel":  "atmos_vpn_notifications",
+        },
+    }
+
+
 @app.get("/api/notifications", tags=["Account"])
 def get_notifications(
     unread_only: bool = False,
