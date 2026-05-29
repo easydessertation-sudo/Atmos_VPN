@@ -527,6 +527,10 @@ def send_push_notification(user_id: str, title: str, message: str, notification_
                 data=data,
                 android=messaging.AndroidConfig(
                     priority="high",
+                    notification=messaging.AndroidNotification(
+                        channel_id="atmos_vpn_notifications",
+                        sound="default",
+                    ),
                 ),
                 apns=messaging.APNSConfig(
                     headers={"apns-priority": "10"},
