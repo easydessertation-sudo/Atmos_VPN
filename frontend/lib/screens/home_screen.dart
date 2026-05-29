@@ -97,6 +97,20 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     if (!mounted || _isSessionDialogShowing) return;
     _isSessionDialogShowing = true;
 
+    final vpn = context.read<VPNProvider>();
+    final reqPlan = vpn.selectedServer?['required_plan']?.toString().toLowerCase() ?? 'free';
+    final isStarterServer = reqPlan == 'starter';
+    final tier = isStarterServer ? 'starter' : 'free';
+    
+    final int adsNeeded = isStarterServer ? 2 : 1;
+    final int adsWatched = isStarterServer ? vpn.starterAdsWatched : 0;
+    final int adsRemaining = adsNeeded - adsWatched;
+    
+    final dialogContent = isStarterServer 
+        ? 'Your Starter 45-minute session has ended. Watch $adsRemaining more ad(s) to get 45 more minutes, or upgrade for unlimited access.'
+        : 'Your Free 30-minute session has ended. Watch an ad to get 30 more minutes, or upgrade for unlimited access.';
+    final buttonText = isStarterServer ? 'WATCH AD ($adsRemaining)' : 'WATCH AD (1)';
+
     await showDialog(
       context: context,
       barrierDismissible: false,
@@ -105,19 +119,25 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         title: const Text('⏰ Session Expired',
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900)),
-        content: const Text(
-            'Your free 45-minute session has ended. Watch an ad to get 45 more minutes, or upgrade for unlimited access.',
-            style: TextStyle(color: AppColors.textSecondary)),
+        content: Text(dialogContent,
+            style: const TextStyle(color: AppColors.textSecondary)),
         actions: [
           TextButton(
             onPressed: () {
               Navigator.pop(ctx);
-              AdManager.showInterstitialAd(onAdDismissed: () {
-                context.read<VPNProvider>().watchAd();
+              AdManager.showInterstitialAd(onAdDismissed: () async {
+                bool claimed = await vpn.watchAd(tier: tier);
+                if (claimed && vpn.selectedServer != null) {
+                  // Connect automatically once all ads are watched!
+                  vpn.connect(vpn.selectedServer!['id']!.toString(), mode: 'standard');
+                } else if (isStarterServer && vpn.starterAdsWatched > 0) {
+                  // If they watched 1 but need 2, re-trigger the dialog so they can click the 2nd one
+                  vpn.triggerSessionExpiredDialog();
+                }
               });
             },
-            child: const Text('WATCH AD (+45 min)',
-                style: TextStyle(
+            child: Text(buttonText,
+                style: const TextStyle(
                     color: AppColors.primaryBlue, fontWeight: FontWeight.bold)),
           ),
           ElevatedButton(
@@ -325,15 +345,39 @@ class _HomeTab extends StatelessWidget {
                       _buildQuickFeatures(context),
                       if (vpn.isFreeUser && !vpn.hasUpgraded) ...[
                         const SizedBox(height: 32),
-                        UpgradeBanner(
-                          onUpgrade: () =>
-                              Navigator.pushNamed(context, '/account/pricing'),
-                          onWatchAd: () {
-                            AdManager.showInterstitialAd(onAdDismissed: () {
-                              vpn.watchAd();
-                            });
-                          },
-                          onClose: () => vpn.setUpgrade(true),
+                        Builder(
+                          builder: (context) {
+                            final reqPlan = vpn.selectedServer?['required_plan']?.toString().toLowerCase() ?? 'free';
+                            final isStarterServer = reqPlan == 'starter';
+                            final tier = isStarterServer ? 'starter' : 'free';
+                            
+                            final int adsNeeded = isStarterServer ? 2 : 1;
+                            final int adsWatched = isStarterServer ? vpn.starterAdsWatched : 0;
+                            final int adsRemaining = adsNeeded - adsWatched;
+                            
+                            final title = isStarterServer ? 'GET STARTER SPEED!' : 'FREE SERVER ACCESS';
+                            final subtitle = isStarterServer 
+                                ? 'Watch $adsRemaining ad(s) to unlock this server for 45 minutes.' 
+                                : 'Watch 1 ad to unlock this server for 30 minutes.';
+                            final buttonText = isStarterServer ? 'WATCH AD ($adsRemaining)' : 'WATCH AD (1)';
+
+                            return UpgradeBanner(
+                              title: title,
+                              subtitle: subtitle,
+                              buttonText: buttonText,
+                              onUpgrade: () =>
+                                  Navigator.pushNamed(context, '/account/pricing'),
+                              onWatchAd: () {
+                                AdManager.showInterstitialAd(onAdDismissed: () async {
+                                  bool claimed = await vpn.watchAd(tier: tier);
+                                  if (claimed && vpn.selectedServer != null) {
+                                    vpn.connect(vpn.selectedServer!['id']!.toString(), mode: 'standard');
+                                  }
+                                });
+                              },
+                              onClose: () => vpn.setUpgrade(true),
+                            );
+                          }
                         ),
                       ],
                       const SizedBox(height: 24),
@@ -371,41 +415,32 @@ class _HomeTab extends StatelessWidget {
           const Expanded(child: SizedBox()),
           if (vpn.isFreeUser) ...[
             (() {
-              final isFreeServer = vpn.isConnected && (vpn.selectedServer?['required_plan']?.toString().toLowerCase() ?? 'free') == 'free';
               return Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: isFreeServer
-                      ? AppColors.success.withValues(alpha: 0.15)
-                      : (vpn.remainingSeconds <= 0
-                          ? AppColors.warning.withValues(alpha: 0.25)
-                          : AppColors.warning.withValues(alpha: 0.15)),
+                  color: vpn.remainingSeconds <= 0
+                      ? AppColors.warning.withValues(alpha: 0.25)
+                      : AppColors.warning.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                      color: isFreeServer
-                          ? AppColors.success.withValues(alpha: 0.4)
-                          : AppColors.warning.withValues(alpha: 0.4)),
+                      color: AppColors.warning.withValues(alpha: 0.4)),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(
-                        isFreeServer
-                            ? Icons.all_inclusive_rounded
-                            : Icons.timer_outlined,
-                        color: isFreeServer ? AppColors.success : AppColors.warning,
+                    const Icon(
+                        Icons.timer_outlined,
+                        color: AppColors.warning,
                         size: 11),
                     const SizedBox(width: 3),
                     Text(
-                      isFreeServer
-                          ? 'Unlimited'
-                          : (!vpn.isSessionTimeLoaded
-                              ? '···'
-                              : (vpn.remainingSeconds <= 0
-                                  ? 'No time'
-                                  : '${(vpn.remainingSeconds ~/ 60).toString().padLeft(2, '0')}:${(vpn.remainingSeconds % 60).toString().padLeft(2, '0')}')),
-                      style: TextStyle(
-                          color: isFreeServer ? AppColors.success : AppColors.warning,
+                      !vpn.isSessionTimeLoaded
+                          ? '···'
+                          : (vpn.remainingSeconds <= 0
+                              ? 'No time'
+                              : '${(vpn.remainingSeconds ~/ 60).toString().padLeft(2, '0')}:${(vpn.remainingSeconds % 60).toString().padLeft(2, '0')}'),
+                      style: const TextStyle(
+                          color: AppColors.warning,
                           fontSize: 10,
                           fontWeight: FontWeight.w800),
                     ),
@@ -676,54 +711,28 @@ class _HomeTab extends StatelessWidget {
         if (vpn.isConnected && vpn.isFreeUser) ...[
           Builder(builder: (context) {
             final reqPlan = vpn.selectedServer?['required_plan']?.toString().toLowerCase() ?? 'free';
-            if (reqPlan == 'starter') {
-              final int h = vpn.remainingSeconds ~/ 3600;
-              final int m = (vpn.remainingSeconds % 3600) ~/ 60;
-              final int s = vpn.remainingSeconds % 60;
-              final timeStr = '${h > 0 ? '$h : ' : ''}${m.toString().padLeft(2, '0')} : ${s.toString().padLeft(2, '0')}';
-              return Padding(
-                padding: const EdgeInsets.only(top: 24.0),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      timeStr,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 26,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 2,
-                      ),
+            final isStarter = reqPlan == 'starter';
+            final int h = vpn.remainingSeconds ~/ 3600;
+            final int m = (vpn.remainingSeconds % 3600) ~/ 60;
+            final int s = vpn.remainingSeconds % 60;
+            final timeStr = '${h > 0 ? '$h : ' : ''}${m.toString().padLeft(2, '0')} : ${s.toString().padLeft(2, '0')}';
+            return Padding(
+              padding: const EdgeInsets.only(top: 24.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    timeStr,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 26,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 2,
                     ),
-                    const SizedBox(width: 16),
-                    GestureDetector(
-                      onTap: () {
-                        AdManager.showInterstitialAd(onAdDismissed: () {
-                          vpn.watchAd();
-                        });
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
-                        ),
-                        child: const Text(
-                          '+ 45 min',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }
-            return const SizedBox.shrink();
+                  ),
+                ],
+              ),
+            );
           }),
         ],
       ],

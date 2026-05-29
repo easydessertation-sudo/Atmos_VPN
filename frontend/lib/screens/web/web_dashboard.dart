@@ -13,21 +13,28 @@ class WebDashboard extends StatefulWidget {
   State<WebDashboard> createState() => _WebDashboardState();
 }
 
-class _WebDashboardState extends State<WebDashboard> with TickerProviderStateMixin {
+class _WebDashboardState extends State<WebDashboard>
+    with TickerProviderStateMixin {
   late AnimationController _pulseController;
   String _selectedMode = 'standard';
 
   final _modes = [
-    _ModeConfig('standard', 'Standard VPN', 'Private browsing', Icons.shield_rounded, const Color(0xFF3B82F6)),
-    _ModeConfig('streaming', 'Streaming', 'Netflix, Disney+', Icons.movie_rounded, const Color(0xFF8B5CF6)),
-    _ModeConfig('gaming', 'Gaming', 'Low latency + DDoS', Icons.sports_esports_rounded, const Color(0xFFF97316)),
-    _ModeConfig('crypto', 'Crypto', 'Secure trading', Icons.currency_bitcoin_rounded, const Color(0xFFF59E0B)),
+    _ModeConfig('standard', 'Standard VPN', 'Private browsing',
+        Icons.shield_rounded, const Color(0xFF3B82F6)),
+    _ModeConfig('streaming', 'Streaming', 'Netflix, Disney+',
+        Icons.movie_rounded, const Color(0xFF8B5CF6)),
+    _ModeConfig('gaming', 'Gaming', 'Low latency + DDoS',
+        Icons.sports_esports_rounded, const Color(0xFFF97316)),
+    _ModeConfig('crypto', 'Crypto', 'Secure trading',
+        Icons.currency_bitcoin_rounded, const Color(0xFFF59E0B)),
   ];
 
   @override
   void initState() {
     super.initState();
-    _pulseController = AnimationController(vsync: this, duration: const Duration(seconds: 2))..repeat(reverse: true);
+    _pulseController =
+        AnimationController(vsync: this, duration: const Duration(seconds: 2))
+          ..repeat(reverse: true);
   }
 
   @override
@@ -50,8 +57,15 @@ class _WebDashboardState extends State<WebDashboard> with TickerProviderStateMix
       color: AppColors.background,
       child: Stack(
         children: [
-          Positioned(top: -100, left: -100, child: _Glow(AppColors.primaryBlue.withValues(alpha: 0.07), 500)),
-          Positioned(bottom: -100, right: -50, child: _Glow(AppColors.accentPurple.withValues(alpha: 0.06), 400)),
+          Positioned(
+              top: -100,
+              left: -100,
+              child: _Glow(AppColors.primaryBlue.withValues(alpha: 0.07), 500)),
+          Positioned(
+              bottom: -100,
+              right: -50,
+              child:
+                  _Glow(AppColors.accentPurple.withValues(alpha: 0.06), 400)),
           SingleChildScrollView(
             padding: const EdgeInsets.all(32),
             child: Column(
@@ -60,14 +74,22 @@ class _WebDashboardState extends State<WebDashboard> with TickerProviderStateMix
                 // Header
                 Row(
                   children: [
-                    Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text('Good ${_greeting()},', style: TextStyle(color: Colors.white.withValues(alpha: 0.45), fontSize: 14)),
-                      const SizedBox(height: 4),
-                      const Text('VPN Dashboard', style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w900)),
-                    ]),
+                    Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Good ${_greeting()},',
+                              style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.45),
+                                  fontSize: 14)),
+                          const SizedBox(height: 4),
+                          const Text('VPN Dashboard',
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 28,
+                                  fontWeight: FontWeight.w900)),
+                        ]),
                     const Spacer(),
-                    if (vpn.isFreeUser)
-                      _UpgradeBadge(),
+                    if (vpn.isFreeUser) _UpgradeBadge(),
                   ],
                 ),
                 const SizedBox(height: 32),
@@ -101,13 +123,21 @@ class _WebDashboardState extends State<WebDashboard> with TickerProviderStateMix
 
                 // Stats row
                 Row(children: [
-                  Expanded(child: _StatCard('Download', '48.9 MB/s', Icons.arrow_downward_rounded, AppColors.success)),
+                  Expanded(
+                      child: _StatCard('Download', '48.9 MB/s',
+                          Icons.arrow_downward_rounded, AppColors.success)),
                   const SizedBox(width: 16),
-                  Expanded(child: _StatCard('Upload', '2.4 MB/s', Icons.arrow_upward_rounded, AppColors.primaryBlue)),
+                  Expanded(
+                      child: _StatCard('Upload', '2.4 MB/s',
+                          Icons.arrow_upward_rounded, AppColors.primaryBlue)),
                   const SizedBox(width: 16),
-                  Expanded(child: _StatCard('Ping', '12 ms', Icons.timer_rounded, AppColors.accentPurple)),
+                  Expanded(
+                      child: _StatCard('Ping', '12 ms', Icons.timer_rounded,
+                          AppColors.accentPurple)),
                   const SizedBox(width: 16),
-                  Expanded(child: _StatCard('Protocol', 'WireGuard', Icons.lock_rounded, AppColors.warning)),
+                  Expanded(
+                      child: _StatCard('Protocol', 'WireGuard',
+                          Icons.lock_rounded, AppColors.warning)),
                 ]),
                 const SizedBox(height: 24),
 
@@ -115,7 +145,11 @@ class _WebDashboardState extends State<WebDashboard> with TickerProviderStateMix
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(flex: 5, child: _RecentServersCard(onViewMap: () => Navigator.pushNamed(context, '/map'))),
+                    Expanded(
+                        flex: 5,
+                        child: _RecentServersCard(
+                            onViewMap: () =>
+                                Navigator.pushNamed(context, '/map'))),
                     const SizedBox(width: 24),
                     Expanded(flex: 3, child: _QuickFeaturesCard()),
                   ],
@@ -126,9 +160,11 @@ class _WebDashboardState extends State<WebDashboard> with TickerProviderStateMix
                 if (vpn.isFreeUser && !vpn.hasUpgraded) ...[
                   const SizedBox(height: 32),
                   UpgradeBanner(
-                    onUpgrade: () => Navigator.pushNamed(context, '/account/pricing'),
+                    onUpgrade: () =>
+                        Navigator.pushNamed(context, '/account/pricing'),
                     onWatchAd: () {}, // Simulated
-                    onClose: () => vpn.setUpgrade(true), // Hide for this session
+                    onClose: () => vpn.setUpgrade(true), title: '',
+                    subtitle: '', buttonText: '', // Hide for this session
                   ),
                 ],
               ],
@@ -151,7 +187,10 @@ class _ConnectCard extends StatelessWidget {
   final VPNProvider vpn;
   final AnimationController pulseController;
   final String selectedMode;
-  const _ConnectCard({required this.vpn, required this.pulseController, required this.selectedMode});
+  const _ConnectCard(
+      {required this.vpn,
+      required this.pulseController,
+      required this.selectedMode});
 
   Color get _modeColor {
     return switch (selectedMode) {
@@ -196,11 +235,15 @@ class _ConnectCard extends StatelessWidget {
                 const SizedBox(height: 8),
                 Text(
                   vpn.isConnected ? '172.16.254.1' : 'IP Hidden',
-                  style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: Colors.white),
+                  style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white),
                 ),
                 Text(
                   vpn.isConnected ? vpn.currentServer : 'Not Connected',
-                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 14),
+                  style: const TextStyle(
+                      color: AppColors.textSecondary, fontSize: 14),
                 ),
               ]),
               // Animated connect button
@@ -210,45 +253,57 @@ class _ConnectCard extends StatelessWidget {
                   return MouseRegion(
                     cursor: SystemMouseCursors.click,
                     child: GestureDetector(
-                    onTap: () => vpn.toggleConnection(),
-                    child: Container(
-                      width: 120,
-                      height: 120,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        boxShadow: [BoxShadow(
-                          color: _modeColor.withValues(alpha: vpn.isConnected ? 0.35 : 0.15 + 0.1 * pulseController.value),
-                          blurRadius: 30 + 10 * pulseController.value,
-                        )],
-                      ),
-                      child: CustomPaint(
-                        painter: _ConnectRingPainter(pulseController.value, vpn.isConnected, _modeColor),
-                        child: Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                vpn.isConnected ? Icons.power_settings_new_rounded : Icons.shield_rounded,
-                                size: 36,
-                                color: vpn.isConnected ? AppColors.success : _modeColor,
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                vpn.isConnected ? 'STOP' : 'CONNECT',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w900,
-                                  color: vpn.isConnected ? AppColors.success : _modeColor,
-                                  letterSpacing: 1.5,
+                      onTap: () => vpn.toggleConnection(),
+                      child: Container(
+                        width: 120,
+                        height: 120,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: _modeColor.withValues(
+                                  alpha: vpn.isConnected
+                                      ? 0.35
+                                      : 0.15 + 0.1 * pulseController.value),
+                              blurRadius: 30 + 10 * pulseController.value,
+                            )
+                          ],
+                        ),
+                        child: CustomPaint(
+                          painter: _ConnectRingPainter(pulseController.value,
+                              vpn.isConnected, _modeColor),
+                          child: Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  vpn.isConnected
+                                      ? Icons.power_settings_new_rounded
+                                      : Icons.shield_rounded,
+                                  size: 36,
+                                  color: vpn.isConnected
+                                      ? AppColors.success
+                                      : _modeColor,
                                 ),
-                              ),
-                            ],
+                                const SizedBox(height: 6),
+                                Text(
+                                  vpn.isConnected ? 'STOP' : 'CONNECT',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w900,
+                                    color: vpn.isConnected
+                                        ? AppColors.success
+                                        : _modeColor,
+                                    letterSpacing: 1.5,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
                     ),
-                  ),
-                );
+                  );
                 },
               ),
             ],
@@ -260,33 +315,47 @@ class _ConnectCard extends StatelessWidget {
           MouseRegion(
             cursor: SystemMouseCursors.click,
             child: GestureDetector(
-            onTap: () => Navigator.pushNamed(context, '/server-list'),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.05),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-              ),
-              child: Row(
-                children: [
-                  const Text('🇬🇧', style: TextStyle(fontSize: 20)),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      const Text('Current Server', style: TextStyle(color: AppColors.textSecondary, fontSize: 10, fontWeight: FontWeight.w700)),
-                      Text(
-                        vpn.isConnected ? vpn.currentServer : 'Auto-Select Best',
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15),
-                      ),
-                    ]),
-                  ),
-                  const Icon(Icons.chevron_right_rounded, color: Colors.white38),
-                ],
+              onTap: () => Navigator.pushNamed(context, '/server-list'),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(14),
+                  border:
+                      Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                ),
+                child: Row(
+                  children: [
+                    const Text('🇬🇧', style: TextStyle(fontSize: 20)),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Current Server',
+                                style: TextStyle(
+                                    color: AppColors.textSecondary,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700)),
+                            Text(
+                              vpn.isConnected
+                                  ? vpn.currentServer
+                                  : 'Auto-Select Best',
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 15),
+                            ),
+                          ]),
+                    ),
+                    const Icon(Icons.chevron_right_rounded,
+                        color: Colors.white38),
+                  ],
+                ),
               ),
             ),
           ),
-        ),
         ],
       ),
     );
@@ -297,7 +366,10 @@ class _ModeSelectorCard extends StatelessWidget {
   final List<_ModeConfig> modes;
   final String selectedMode;
   final ValueChanged<String> onModeChanged;
-  const _ModeSelectorCard({required this.modes, required this.selectedMode, required this.onModeChanged});
+  const _ModeSelectorCard(
+      {required this.modes,
+      required this.selectedMode,
+      required this.onModeChanged});
 
   @override
   Widget build(BuildContext context) {
@@ -311,11 +383,19 @@ class _ModeSelectorCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('VPN Mode', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18)),
+          const Text('VPN Mode',
+              style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 18)),
           const SizedBox(height: 8),
-          const Text('Choose how Atmos VPN protects you', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+          const Text('Choose how Atmos VPN protects you',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
           const SizedBox(height: 20),
-          ...modes.map((m) => _ModeRow(config: m, isSelected: selectedMode == m.id, onTap: () => onModeChanged(m.id))),
+          ...modes.map((m) => _ModeRow(
+              config: m,
+              isSelected: selectedMode == m.id,
+              onTap: () => onModeChanged(m.id))),
         ],
       ),
     );
@@ -326,7 +406,8 @@ class _ModeRow extends StatefulWidget {
   final _ModeConfig config;
   final bool isSelected;
   final VoidCallback onTap;
-  const _ModeRow({required this.config, required this.isSelected, required this.onTap});
+  const _ModeRow(
+      {required this.config, required this.isSelected, required this.onTap});
 
   @override
   State<_ModeRow> createState() => _ModeRowState();
@@ -350,10 +431,14 @@ class _ModeRowState extends State<_ModeRow> {
           decoration: BoxDecoration(
             color: widget.isSelected
                 ? widget.config.color.withValues(alpha: 0.12)
-                : _hovered ? Colors.white.withValues(alpha: 0.04) : Colors.transparent,
+                : _hovered
+                    ? Colors.white.withValues(alpha: 0.04)
+                    : Colors.transparent,
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color: widget.isSelected ? widget.config.color.withValues(alpha: 0.4) : Colors.white.withValues(alpha: 0.06),
+              color: widget.isSelected
+                  ? widget.config.color.withValues(alpha: 0.4)
+                  : Colors.white.withValues(alpha: 0.06),
             ),
           ),
           child: Row(
@@ -364,20 +449,32 @@ class _ModeRowState extends State<_ModeRow> {
                   color: widget.config.color.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(widget.config.icon, color: widget.config.color, size: 18),
+                child: Icon(widget.config.icon,
+                    color: widget.config.color, size: 18),
               ),
               const SizedBox(width: 14),
               Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(widget.config.name, style: TextStyle(color: widget.isSelected ? Colors.white : Colors.white70, fontWeight: FontWeight.w700, fontSize: 14)),
-                  Text(widget.config.desc, style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
-                ]),
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(widget.config.name,
+                          style: TextStyle(
+                              color: widget.isSelected
+                                  ? Colors.white
+                                  : Colors.white70,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14)),
+                      Text(widget.config.desc,
+                          style: const TextStyle(
+                              color: AppColors.textSecondary, fontSize: 11)),
+                    ]),
               ),
               if (widget.isSelected)
                 Container(
                   width: 8,
                   height: 8,
-                  decoration: BoxDecoration(color: widget.config.color, shape: BoxShape.circle),
+                  decoration: BoxDecoration(
+                      color: widget.config.color, shape: BoxShape.circle),
                 ),
             ],
           ),
@@ -407,13 +504,23 @@ class _StatCard extends StatelessWidget {
         children: [
           Container(
             padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
+            decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(10)),
             child: Icon(icon, color: color, size: 18),
           ),
           const SizedBox(width: 14),
           Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(label, style: const TextStyle(color: AppColors.textSecondary, fontSize: 11, fontWeight: FontWeight.w600)),
-            Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16)),
+            Text(label,
+                style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600)),
+            Text(value,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16)),
           ]),
         ],
       ),
@@ -446,22 +553,33 @@ class _RecentServersCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(children: [
-            const Text('Recent Servers', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18)),
+            const Text('Recent Servers',
+                style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 18)),
             const Spacer(),
             TextButton.icon(
               onPressed: onViewMap,
               icon: const Icon(Icons.map_rounded, size: 16),
-              label: const Text('VIEW MAP', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 11)),
-              style: TextButton.styleFrom(foregroundColor: AppColors.accentPurple),
+              label: const Text('VIEW MAP',
+                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 11)),
+              style:
+                  TextButton.styleFrom(foregroundColor: AppColors.accentPurple),
             ),
             const SizedBox(width: 8),
             TextButton(
               onPressed: () => Navigator.pushNamed(context, '/server-list'),
-              child: const Text('VIEW ALL', style: TextStyle(color: AppColors.primaryBlue, fontSize: 11, fontWeight: FontWeight.w900)),
+              child: const Text('VIEW ALL',
+                  style: TextStyle(
+                      color: AppColors.primaryBlue,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w900)),
             ),
           ]),
           const SizedBox(height: 20),
-          ..._servers.map((s) => _ServerRow(flag: s.$1, name: s.$2, ping: s.$3, speed: s.$4, type: s.$5)),
+          ..._servers.map((s) => _ServerRow(
+              flag: s.$1, name: s.$2, ping: s.$3, speed: s.$4, type: s.$5)),
         ],
       ),
     );
@@ -470,7 +588,12 @@ class _RecentServersCard extends StatelessWidget {
 
 class _ServerRow extends StatefulWidget {
   final String flag, name, ping, speed, type;
-  const _ServerRow({required this.flag, required this.name, required this.ping, required this.speed, required this.type});
+  const _ServerRow(
+      {required this.flag,
+      required this.name,
+      required this.ping,
+      required this.speed,
+      required this.type});
 
   @override
   State<_ServerRow> createState() => _ServerRowState();
@@ -490,7 +613,9 @@ class _ServerRowState extends State<_ServerRow> {
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
-          color: _hovered ? Colors.white.withValues(alpha: 0.05) : Colors.transparent,
+          color: _hovered
+              ? Colors.white.withValues(alpha: 0.05)
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
@@ -498,10 +623,18 @@ class _ServerRowState extends State<_ServerRow> {
             Text(widget.flag, style: const TextStyle(fontSize: 22)),
             const SizedBox(width: 16),
             Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(widget.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14)),
-                Text('${widget.speed} • ${widget.type}', style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
-              ]),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(widget.name,
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14)),
+                    Text('${widget.speed} • ${widget.type}',
+                        style: const TextStyle(
+                            color: AppColors.textSecondary, fontSize: 11)),
+                  ]),
             ),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -509,7 +642,11 @@ class _ServerRowState extends State<_ServerRow> {
                 color: Colors.white.withValues(alpha: 0.05),
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: Text(widget.ping, style: const TextStyle(color: AppColors.success, fontSize: 11, fontWeight: FontWeight.w700)),
+              child: Text(widget.ping,
+                  style: const TextStyle(
+                      color: AppColors.success,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700)),
             ),
             const SizedBox(width: 12),
             if (_hovered)
@@ -517,12 +654,16 @@ class _ServerRowState extends State<_ServerRow> {
                 onPressed: () {},
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primaryBlue,
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8)),
                   minimumSize: Size.zero,
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
-                child: const Text('Connect', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
+                child: const Text('Connect',
+                    style:
+                        TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
               )
             else
               const SizedBox(width: 72),
@@ -562,19 +703,27 @@ class _QuickFeaturesCardState extends State<_QuickFeaturesCard> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Security Features', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18)),
+              const Text('Security Features',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 18)),
               TextButton(
                 onPressed: () => Navigator.pushNamed(context, '/security'),
-                child: const Text('MANAGE ALL', style: TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.w900, fontSize: 12)),
+                child: const Text('MANAGE ALL',
+                    style: TextStyle(
+                        color: AppColors.primaryBlue,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 12)),
               ),
             ],
           ),
           const SizedBox(height: 20),
           ..._toggles.entries.map((e) => _ToggleRow(
-            label: e.key,
-            value: e.value,
-            onChanged: (v) => setState(() => _toggles[e.key] = v),
-          )),
+                label: e.key,
+                value: e.value,
+                onChanged: (v) => setState(() => _toggles[e.key] = v),
+              )),
         ],
       ),
     );
@@ -585,7 +734,8 @@ class _ToggleRow extends StatelessWidget {
   final String label;
   final bool value;
   final ValueChanged<bool> onChanged;
-  const _ToggleRow({required this.label, required this.value, required this.onChanged});
+  const _ToggleRow(
+      {required this.label, required this.value, required this.onChanged});
 
   @override
   Widget build(BuildContext context) {
@@ -597,12 +747,16 @@ class _ToggleRow extends StatelessWidget {
             width: 8,
             height: 8,
             decoration: BoxDecoration(
-              color: value ? AppColors.success : Colors.white.withValues(alpha: 0.15),
+              color: value
+                  ? AppColors.success
+                  : Colors.white.withValues(alpha: 0.15),
               shape: BoxShape.circle,
             ),
           ),
           const SizedBox(width: 12),
-          Expanded(child: Text(label, style: const TextStyle(color: Colors.white70, fontSize: 14))),
+          Expanded(
+              child: Text(label,
+                  style: const TextStyle(color: Colors.white70, fontSize: 14))),
           Switch(
             value: value,
             onChanged: onChanged,
@@ -631,7 +785,10 @@ class _UpgradeBadge extends StatelessWidget {
             borderRadius: BorderRadius.circular(30),
           ),
           child: const Text('⚡ Upgrade to Pro',
-              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Colors.white)),
+              style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 13,
+                  color: Colors.white)),
         ),
       ),
     );

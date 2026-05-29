@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:io' show Platform;
+import 'dart:math' as math;
 import 'package:app_links/app_links.dart';
 import 'package:provider/provider.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -315,6 +316,7 @@ class VPNProvider with ChangeNotifier {
   };
   bool _isFetchingSecurity = false;
   bool _triggerSessionExpired = false;
+  int _starterAdsWatched = 0;
 
   bool get isConnected => _isConnected;
   String get status => _status;
@@ -325,6 +327,7 @@ class VPNProvider with ChangeNotifier {
   bool get hasUpgraded => _hasUpgraded;
   bool get isSessionTimeLoaded => _isSessionTimeLoaded;
   int get unreadCount => _unreadCount;
+  int get starterAdsWatched => _starterAdsWatched;
   Map<String, dynamic>? get userData => _userData;
   Map<String, dynamic>? get selectedServer => _selectedServer;
   List<dynamic> get servers => _servers;
@@ -367,14 +370,11 @@ class VPNProvider with ChangeNotifier {
         final reqPlan =
             _selectedServer?['required_plan']?.toString().toLowerCase() ??
                 'free';
-        final isStarterServer = reqPlan == 'starter';
-        if (isStarterServer) {
-          if (_remainingSeconds > 0) {
-            _remainingSeconds--;
-            notifyListeners();
-          } else {
-            _handleSessionExpiry();
-          }
+        if (_remainingSeconds > 0) {
+          _remainingSeconds--;
+          notifyListeners();
+        } else {
+          _handleSessionExpiry();
         }
       }
     });
@@ -385,12 +385,43 @@ class VPNProvider with ChangeNotifier {
 
   Future<void> _init() async {
     await _initWireGuard();
-    await fetchProfile();
-    await NotificationService.registerToken();
-    await _syncSessionTime(); // Get real time from backend
-    await fetchServers();
-    await fetchSecuritySettings();
-    await checkConnectionStatus();
+    
+    // Load previously notified IDs to prevent duplicate alerts across app restarts
+    final prefs = await SharedPreferences.getInstance();
+    final savedIds = prefs.getStringList('notified_ids') ?? [];
+    _notifiedIds.addAll(savedIds);
+    
+    // Run network requests simultaneously to drastically speed up startup time
+    await Future.wait([
+      fetchProfile().then((_) async {
+        // These depend on fetchProfile finishing first (to know _isFreeUser)
+        await NotificationService.registerToken();
+        await _syncSessionTime();
+      }),
+      fetchServers(),
+      fetchSecuritySettings(),
+      checkConnectionStatus(),
+      fetchNotifications(), // Instantly check for new notifications on launch
+    ]);
+    
+    if (_selectedServer == null && _servers.isNotEmpty) {
+      final random = math.Random();
+      if (_isFreeUser) {
+        final freeServers = _servers.where((s) {
+          final reqPlan = s['required_plan']?.toString().toLowerCase() ?? 'free';
+          return reqPlan == 'free' || reqPlan == 'starter';
+        }).toList();
+        if (freeServers.isNotEmpty) {
+          _selectedServer = freeServers[random.nextInt(freeServers.length)] as Map<String, dynamic>;
+        } else {
+          _selectedServer = _servers[random.nextInt(_servers.length)] as Map<String, dynamic>;
+        }
+      } else {
+        _selectedServer = _servers[random.nextInt(_servers.length)] as Map<String, dynamic>;
+      }
+      notifyListeners();
+    }
+
     _initConnectivity();
   }
 
@@ -593,10 +624,22 @@ class VPNProvider with ChangeNotifier {
           '[Interface]', '[Interface]\nAddress = 10.0.0.2/32');
     }
 
-    // 3. Determine DNS
+    // 3. Determine DNS based on smart priority
     final adBlocker = _securityFeatures['ad_blocker_enabled'] == true;
-    String dnsToInject =
-        adBlocker ? '94.140.14.14, 94.140.15.15' : '1.1.1.1, 8.8.8.8';
+    final trackerBlocker = _securityFeatures['tracker_blocker_enabled'] == true;
+    final malwareProtection = _securityFeatures['malware_protection'] == true;
+    
+    String dnsToInject;
+    if (adBlocker || trackerBlocker) {
+      // AdGuard DNS Default (Blocks Ads, Trackers, and Malware)
+      dnsToInject = '94.140.14.14, 94.140.15.15';
+    } else if (malwareProtection) {
+      // Cloudflare Malware-Blocking DNS
+      dnsToInject = '1.1.1.2, 1.0.0.2';
+    } else {
+      // Cloudflare Standard Secure DNS (No blocking)
+      dnsToInject = '1.1.1.1, 8.8.8.8';
+    }
 
     // 4. Clean up existing lines
     finalConfig = finalConfig.replaceAll(RegExp(r'DNS\s*=\s*[^\n]*\n?'), '');
@@ -756,6 +799,7 @@ class VPNProvider with ChangeNotifier {
             final isRead = n['is_read'] ?? true;
             if (!isRead && !_notifiedIds.contains(id)) {
               _notifiedIds.add(id);
+              _saveNotifiedIds();
               // Re-enabled after fixing the native icon crash failsafe
               NotificationService.showNotification(
                 id: id.hashCode.abs() % 100000,
@@ -774,12 +818,20 @@ class VPNProvider with ChangeNotifier {
     } catch (_) {}
   }
 
+  Future<void> _saveNotifiedIds() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('notified_ids', _notifiedIds.toList());
+  }
+
   void updateServers(List<dynamic> servers) {
     _servers = servers;
     notifyListeners();
   }
 
   void setSelectedServer(Map<String, dynamic> server) {
+    if (_selectedServer?['id'] != server['id']) {
+      _starterAdsWatched = 0; // Reset ad progress if switching servers
+    }
     _selectedServer = server;
     _lastError = null;
     notifyListeners();
@@ -812,20 +864,54 @@ class VPNProvider with ChangeNotifier {
     triggerSessionExpiredDialog();
   }
 
-  Future<void> watchAd() async {
+  Future<bool> watchAd({String tier = 'free'}) async {
     if (_isFreeUser) {
       try {
-        final response = await ApiService.claimAdReward();
+        final response = await ApiService.claimAdReward(tier: tier);
         if (response['success'] == true) {
-          _remainingSeconds = response['data']['remaining_seconds'] ?? 0;
-          notifyListeners();
+          final data = response['data'] ?? {};
+          
+          if (tier == 'starter') {
+            _starterAdsWatched = data['ads_watched'] ?? 0;
+            notifyListeners();
+            
+            // Check if we hit the required number of ads
+            if (data.containsKey('reward_minutes') && data['reward_minutes'] > 0) {
+              _remainingSeconds = (data['reward_minutes'] as num).toInt() * 60;
+              _starterAdsWatched = 0; // Reset upon successful claim
+              notifyListeners();
+              return true; // Reward claimed!
+            }
+            
+            if (data.containsKey('remaining_seconds') && data['remaining_seconds'] > 0) {
+              _remainingSeconds = (data['remaining_seconds'] as num).toInt();
+              _starterAdsWatched = 0;
+              notifyListeners();
+              return true;
+            }
+            
+            return false; // Ad recorded, but need more to claim reward
+          } else {
+            // Free tier instantly grants time
+            _remainingSeconds = (data['remaining_seconds'] as num?)?.toInt() ?? (30 * 60);
+            notifyListeners();
+            return true; // Reward claimed!
+          }
         }
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('Error claiming ad reward: $e');
+      }
     }
+    return false;
   }
 
   // ── Connect ────────────────────────────────────────────────────────────────
   Future<void> connect(String serverId, {String mode = 'standard'}) async {
+    // GUARANTEE instant UI feedback before any Dart Event Loop yields
+    _status = 'Provisioning...';
+    _lastError = null;
+    notifyListeners();
+
     final server = _servers.firstWhere(
       (s) => s['id']?.toString() == serverId,
       orElse: () => _selectedServer,
@@ -834,11 +920,12 @@ class VPNProvider with ChangeNotifier {
         server?['required_plan']?.toString().toLowerCase() ?? 'free';
     final userPlan = _userData?['plan']?.toString().toLowerCase() ?? 'free';
 
-    final isStarterServer = reqPlan == 'starter';
-    final bool needsAd =
-        userPlan == 'free' && isStarterServer && _remainingSeconds <= 0;
+    // BOTH Free and Starter servers require an ad if remaining seconds is 0!
+    final bool needsAd = userPlan == 'free' && _remainingSeconds <= 0;
 
     if (needsAd) {
+      _status = 'Disconnected';
+      notifyListeners();
       // Do not auto-reward. Trigger the popup event.
       triggerSessionExpiredDialog();
       return;
@@ -890,6 +977,8 @@ class VPNProvider with ChangeNotifier {
         
         if (accepted == true) {
           await prefs.setBool('has_accepted_vpn_disclosure', true);
+          _status = 'Provisioning...'; // Restore loading animation
+          notifyListeners();
         } else {
           _status = 'Disconnected';
           _lastError = 'VPN permission denied by user.';
@@ -906,50 +995,60 @@ class VPNProvider with ChangeNotifier {
   Future<void> _actualConnect(String serverId,
       {String mode = 'standard'}) async {
     _userManuallyDisconnected = false; // Reset the manual disconnect flag
-    // 1. Force a clean state by disconnecting any existing session
-    await disconnect();
+    
+    // 1. Force a clean state by disconnecting any existing active session
+    if (_isConnected) {
+      await disconnect();
+    }
 
+    // Now safely give the user visual feedback that the loading has started
     _status = 'Provisioning...';
     _lastError = null;
     notifyListeners();
 
     try {
-      // 1. Generate (or load) real WireGuard keypair on-device
+      // 1 + 2. Run keypair loading and stale config cleanup IN PARALLEL
+      //        Both are independent, so no need to wait for one before the other.
+      final bool useRealTunnel = !kIsWeb && _wgInitialized;
       String privateKey = '';
       String publicKey = 'placeholder_key=';
-      final bool useRealTunnel = !kIsWeb && _wgInitialized;
 
-      if (useRealTunnel) {
-        final kp = await _getOrCreateKeyPair();
-        privateKey = kp.$1;
-        publicKey = kp.$2;
-        debugPrint('[KEY-CHECK] Private Key (first 8 chars): ${privateKey.substring(0, 8)}...');
-        debugPrint('[KEY-CHECK] Public Key being sent to /provision: $publicKey');
-      }
+      await Future.wait([
+        // Task A: Get or generate the WireGuard keypair
+        if (useRealTunnel)
+          () async {
+            final kp = await _getOrCreateKeyPair();
+            privateKey = kp.$1;
+            publicKey = kp.$2;
+            debugPrint('[KEY-CHECK] Private Key (first 8 chars): ${privateKey.substring(0, 8)}...');
+            debugPrint('[KEY-CHECK] Public Key being sent to /provision: $publicKey');
+          }(),
 
-      // 2. Revoke any existing stale config for this server
-      //    This forces the backend to generate a fresh config with real keys
-      //    instead of returning the old cached PENDING_SERVER_KEY config.
-      try {
-        final existingConfigs = await ApiService.getVpnConfigs();
-        List<dynamic> configs = [];
-        if (existingConfigs['success'] == true &&
-            existingConfigs['data'] != null) {
-          final data = existingConfigs['data'];
-          if (data is List) {
-            configs = data;
-          } else if (data is Map && data['configs'] is List) {
-            configs = data['configs'];
-          }
-        }
-        for (final cfg in configs) {
-          final cfgServerId = cfg['server_id']?.toString();
-          final cfgId = cfg['config_id']?.toString();
-          if (cfgServerId == serverId && cfgId != null) {
-            await ApiService.revokeVpnConfig(cfgId);
-          }
-        }
-      } catch (e) {}
+        // Task B: Revoke any stale configs for this server (fire-and-forget cleanup)
+        () async {
+          try {
+            final existingConfigs = await ApiService.getVpnConfigs();
+            List<dynamic> configs = [];
+            if (existingConfigs['success'] == true && existingConfigs['data'] != null) {
+              final data = existingConfigs['data'];
+              if (data is List) {
+                configs = data;
+              } else if (data is Map && data['configs'] is List) {
+                configs = data['configs'];
+              }
+            }
+            final staleConfigIds = configs
+                .where((cfg) => cfg['server_id']?.toString() == serverId && cfg['config_id'] != null)
+                .map((cfg) => cfg['config_id'].toString())
+                .toList();
+            if (staleConfigIds.isNotEmpty) {
+              await Future.wait(
+                staleConfigIds.map((cfgId) => ApiService.revokeVpnConfig(cfgId))
+              );
+            }
+          } catch (_) {}
+        }(),
+      ]);
 
       // 3. Provision — backend returns WireGuard .conf
       final provResponse = await ApiService.provisionVpn(
@@ -984,8 +1083,9 @@ class VPNProvider with ChangeNotifier {
         _status = 'Configuring...';
         notifyListeners();
         bool done = false;
-        for (int i = 0; i < 20 && !done; i++) {
-          await Future.delayed(const Duration(seconds: 1));
+        // Poll every 200ms instead of 1000ms (up to 20 seconds max)
+        for (int i = 0; i < 100 && !done; i++) {
+          await Future.delayed(const Duration(milliseconds: 200));
           final jr = await ApiService.getVpnJob(jobId);
           final js = jr['data']?['status']?.toString() ?? jr['status']?.toString();
           if (js == 'completed') done = true;
@@ -1000,8 +1100,8 @@ class VPNProvider with ChangeNotifier {
         _status = 'Configuring...';
         notifyListeners();
         bool done = false;
-        for (int i = 0; i < 20 && !done; i++) {
-          await Future.delayed(const Duration(seconds: 1));
+        for (int i = 0; i < 100 && !done; i++) {
+          await Future.delayed(const Duration(milliseconds: 200));
           final jr = await ApiService.getVpnJob(jobId);
           final js = jr['data']?['status']?.toString() ?? jr['status']?.toString();
           if (js == 'completed') done = true;
@@ -1155,8 +1255,11 @@ class VPNProvider with ChangeNotifier {
     }
   }
 
-  // ── Disconnect ─────────────────────────────────────────────────────────────
   Future<void> disconnect() async {
+    if (!_isConnected && _status == 'Disconnected') {
+      return; // Already cleanly disconnected, skip native teardown to save UI lag
+    }
+    
     _status = 'Disconnecting...';
     notifyListeners();
     // Run the heavy native IPC calls (stopVpn + API) off the main UI thread
@@ -1167,12 +1270,13 @@ class VPNProvider with ChangeNotifier {
         if (!kIsWeb && _wgInitialized) {
           await WireGuardFlutter.instance.stopVpn();
         }
-        await ApiService.disconnect();
+        ApiService.disconnect(); // Fire-and-forget to drastically speed up reconnections
       } catch (_) {}
     });
     _isConnected = false;
     _status = 'Disconnected';
     _currentServer = 'None';
+    _remainingSeconds = 0; // NEW RULE: Use it or lose it
     notifyListeners();
   }
 
@@ -1193,9 +1297,8 @@ class VPNProvider with ChangeNotifier {
     } else {
       final reqPlan =
           _selectedServer?['required_plan']?.toString().toLowerCase() ?? 'free';
-      final isStarterServer = reqPlan == 'starter';
 
-      if (_isFreeUser && isStarterServer && _remainingSeconds <= 0) {
+      if (_isFreeUser && _remainingSeconds <= 0) {
         triggerSessionExpiredDialog();
         return;
       }

@@ -667,11 +667,14 @@ class ApiService {
 
   // ─── Rewards ─────────────────────────────────────────────────────────────
 
-  /// Old reward endpoint — kept for backward compat
-  static Future<Map<String, dynamic>> claimAdReward() async {
+  /// Old reward endpoint — kept for backward compat (now supports tiered rewards)
+  static Future<Map<String, dynamic>> claimAdReward({String tier = 'free'}) async {
     final response = await _requestWithRefresh(
-      () async => http.post(Uri.parse('$_api/rewards/watch-ad'),
-          headers: await _headers),
+      () async => http.post(
+        Uri.parse('$_api/rewards/watch-ad'),
+        headers: await _headers,
+        body: jsonEncode({'tier': tier}),
+      ),
     );
     return _decodeResponse(response);
   }

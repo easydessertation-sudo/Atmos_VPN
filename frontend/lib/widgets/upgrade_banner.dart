@@ -5,12 +5,18 @@ class UpgradeBanner extends StatefulWidget {
   final VoidCallback onUpgrade;
   final VoidCallback onWatchAd;
   final VoidCallback onClose;
+  final String title;
+  final String subtitle;
+  final String buttonText;
 
   const UpgradeBanner({
     super.key,
     required this.onUpgrade,
     required this.onWatchAd,
     required this.onClose,
+    required this.title,
+    required this.subtitle,
+    required this.buttonText,
   });
 
   @override
@@ -54,9 +60,9 @@ class _UpgradeBannerState extends State<UpgradeBanner> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'GET TURBO SPEED!',
-                      style: TextStyle(
+                    Text(
+                      widget.title,
+                      style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.w900,
                         fontSize: 15,
@@ -64,9 +70,9 @@ class _UpgradeBannerState extends State<UpgradeBanner> {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    const Text(
-                      'Watch a 30s ad to unlock fastest servers for 45 minutes.',
-                      style: TextStyle(
+                    Text(
+                      widget.subtitle,
+                      style: const TextStyle(
                         color: AppColors.textSecondary,
                         fontSize: 12,
                         height: 1.4,
@@ -95,7 +101,7 @@ class _UpgradeBannerState extends State<UpgradeBanner> {
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
-                  child: const Text('WATCH AD', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 1)),
+                  child: Text(widget.buttonText, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 1)),
                 ),
               ),
               const SizedBox(width: 12),
