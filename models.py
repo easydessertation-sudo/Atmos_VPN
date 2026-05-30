@@ -592,6 +592,7 @@ class Device(Base):
     def to_dict(self):
         return {
             "id":         str(self.id),
+            "device_id":  self.device_fingerprint,
             "name":       self.name,
             "platform":   self.platform,
             "last_seen":  self.last_seen.isoformat() if self.last_seen else None,

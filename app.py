@@ -2386,9 +2386,13 @@ def billing_history(user: User = Depends(get_current_user), db: Session = Depend
 # Device Routes
 # ─────────────────────────────────────────────────────────────────
 @app.get("/api/devices", tags=["Devices"])
-def list_devices(user: User = Depends(get_current_user)):
+def list_devices(
+    user: User    = Depends(get_current_user),
+    db:   Session = Depends(get_db),
+):
     """List all registered devices for the current user."""
-    return success([d.to_dict() for d in user.devices])
+    devices = db.query(Device).filter_by(user_id=str(user.id)).order_by(Device.last_seen.desc()).all()
+    return success([d.to_dict() for d in devices])
 
 
 @app.delete("/api/devices/{device_id}", tags=["Devices"])
@@ -2838,6 +2842,7 @@ def create_notification(
 @app.post("/api/users/fcm-token", tags=["Account"])
 def register_fcm_token(
     body: FCMTokenRegisterRequest,
+    request: Request,
     user: User    = Depends(get_current_user),
     db:   Session = Depends(get_db),
 ):
@@ -2883,6 +2888,17 @@ def register_fcm_token(
                 existing.platform = platform
                 existing.updated_at = datetime.utcnow()
                 db.commit()
+    # ── Link the frontend device_id to the Device record ──────────
+    # Match the Device record by User-Agent (same header used at login)
+    user_agent = request.headers.get("user-agent", "Unknown Device")
+    device_record = db.query(Device).filter_by(
+        user_id=str(user.id),
+        name=user_agent,
+    ).first()
+    if device_record and device_record.device_fingerprint != device_id:
+        device_record.device_fingerprint = device_id
+        db.commit()
+
     return success(msg="FCM token registered successfully")
 
 
