@@ -2397,13 +2397,55 @@ def remove_device(
     user: User    = Depends(get_current_user),
     db:   Session = Depends(get_db),
 ):
-    """Remove a device from the user's account."""
-    device = db.query(Device).filter_by(id=device_id, user_id=user.id).first()
+    """Remove a device from the user's account and revoke its VPN access."""
+    import uuid as _uuid
+    from tasks import remove_wireguard_peer
+    
+    device = db.query(Device).filter_by(id=device_id, user_id=str(user.id)).first()
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
+
+    # Step 1: Find and revoke any active VPN configurations for this specific device
+    # (Since VPNConfig doesn't have device_id, we match by name and platform)
+    active_configs = db.query(VPNConfig).filter_by(
+        user_id=str(user.id),
+        device_name=device.name,
+        platform=device.platform,
+        is_active=True
+    ).all()
+
+    for config in active_configs:
+        config.is_active = False
+        config.revoked_at = datetime.utcnow()
+        release_ip_to_pool(db, str(config.id))
+        
+        # End any active sessions
+        db.query(VPNSession).filter_by(config_id=str(config.id), is_active=True).update({
+            "is_active": False,
+            "ended_at":  datetime.utcnow(),
+        })
+
+        server = db.get(VPNServer, config.server_id)
+        if server:
+            server.current_peers = max(0, (server.current_peers or 1) - 1)
+            # Queue Celery task to physically remove peer from WireGuard
+            if server.ip_address:
+                try:
+                    remove_wireguard_peer.delay(
+                        job_id=str(_uuid.uuid4()),
+                        server_ip=server.ip_address,
+                        public_key=config.public_key,
+                        assigned_ip=config.assigned_ip,
+                        config_id=str(config.id),
+                    )
+                except Exception:
+                    pass
+
+    # Step 2: Delete the device record
     db.delete(device)
     db.commit()
-    return success(msg="Device removed")
+    
+    return success(msg=f"Device removed and {len(active_configs)} VPN configurations revoked.")
 
 
 # ─────────────────────────────────────────────────────────────────
