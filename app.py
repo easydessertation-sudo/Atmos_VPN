@@ -44,7 +44,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.responses import JSONResponse, HTMLResponse, StreamingResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from jose import JWTError, jwt
@@ -3379,71 +3379,26 @@ def get_ip(request: Request):
     return success({"ip": ip})
 
 
-@app.post("/api/speedtest/run", tags=["Health"])
-def run_speed_test(
-    user: User    = Depends(get_current_user),
-    db:   Session = Depends(get_db),
-):
-    """
-    Run a VPN speed test for the current user.
+SPEEDTEST_CHUNK = os.urandom(1024 * 1024)  # 1MB pre-generated chunk for extreme performance
 
-    Returns the exact 4 values shown in the Speed Test UI:
-      - download_mbps   → Download Mbps gauge + card
-      - upload_mbps     → Upload Mbps card
-      - ping_ms         → Ping card
-      - latency_ms      → Latency card
+@app.get("/api/v1/speedtest/download", tags=["Health"])
+def speedtest_download():
+    """Stream 20MB of binary data for download speed testing."""
+    def iterfile():
+        for _ in range(20):
+            yield SPEEDTEST_CHUNK
+    return StreamingResponse(iterfile(), media_type="application/octet-stream")
 
-    NOTE: Values are simulated until a real WireGuard server is connected.
-    On a real server, this would SSH in and run iperf3 / speedtest-cli.
-    """
-    # Check if user has an active VPN session
-    session = db.query(VPNSession).filter_by(
-        user_id=str(user.id), is_active=True
-    ).first()
+@app.post("/api/v1/speedtest/upload", tags=["Health"])
+async def speedtest_upload(request: Request):
+    """Accept raw binary upload for speed testing."""
+    body = await request.body()
+    return {"status": "ok", "received_bytes": len(body)}
 
-    server  = None
-    ping_ms = 999
-    if session:
-        server  = db.get(VPNServer, session.server_id)
-        # Use actual server ping + small random variation for realism
-        ping_ms = (server.ping_ms + random.randint(-3, 5)) if server else 999
-
-    # Simulate realistic speed test results capped by the user's plan speed limit.
-    # In production: SSH into VPN server and run iperf3 or speedtest-cli,
-    # then still cap the reported result to plan_limits["speed_mbps"].
-    plan_limits   = PLAN_LIMITS.get(user.plan, PLAN_LIMITS["free"])
-    speed_cap     = plan_limits.get("speed_mbps")   # None = unlimited
-
-    # Raw simulated speeds (what the server hardware can do)
-    raw_download = random.uniform(80.0, 150.0)
-    raw_upload   = random.uniform(15.0,  40.0)
-
-    # Apply plan speed cap — free=10 Mbps, starter=50, pro=200, premium=unlimited
-    if speed_cap is not None:
-        # Download capped to plan limit; upload ≈ 40% of download cap
-        download_mbps = round(min(raw_download, speed_cap), 1)
-        upload_mbps   = round(min(raw_upload,   speed_cap * 0.4), 1)
-    else:
-        download_mbps = round(raw_download, 1)
-        upload_mbps   = round(raw_upload,   1)
-
-    latency_ms = ping_ms + random.randint(0, 3)   # Latency ≈ Ping ± small jitter
-
-    return success({
-        "download_mbps":    download_mbps,   # shown in top gauge + bottom-left card
-        "upload_mbps":      upload_mbps,     # shown in bottom-right card
-        "ping_ms":          ping_ms,         # shown in bottom-left card (Ping)
-        "latency_ms":       latency_ms,      # shown in bottom-right card (Latency)
-        "speed_limit_mbps": speed_cap,       # None = unlimited — useful for UI cap indicator
-        "connected":        session is not None,
-        "server":           server.to_dict() if server else None,
-        "tested_at":        datetime.utcnow().isoformat() + "Z",
-        "note": (
-            "Live values from VPN server"
-            if session
-            else "Not connected to VPN — results reflect unprotected connection"
-        ),
-    })
+@app.get("/api/v1/speedtest/ping", tags=["Health"])
+def speedtest_ping():
+    """Minimal endpoint for ping/latency measurement."""
+    return {"status": "ok"}
 
 
 # ─────────────────────────────────────────────────────────────────
