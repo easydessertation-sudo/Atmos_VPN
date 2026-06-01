@@ -6,6 +6,7 @@ Run with:  uvicorn app:app --reload --port 5000
 Docs at:   http://localhost:5000/docs
 """
 import os
+import asyncio
 import sys
 import random
 import time
@@ -3379,25 +3380,59 @@ def get_ip(request: Request):
     return success({"ip": ip})
 
 
-SPEEDTEST_CHUNK = os.urandom(1024 * 1024)  # 1MB pre-generated chunk for extreme performance
+# Pre-generated 32KB chunk used by download stream
+_SPEEDTEST_CHUNK = os.urandom(32768)
+_SPEEDTEST_TOTAL_BYTES = 20 * 1024 * 1024  # 20MB total
+
+
+def _speedtest_bytes_per_sec(user: User) -> Optional[float]:
+    """Return the byte-per-second cap for this user's plan. None = unlimited."""
+    plan_limits = PLAN_LIMITS.get(user.plan, PLAN_LIMITS["free"])
+    speed_mbps   = plan_limits.get("speed_mbps")   # None = unlimited
+    if speed_mbps is None:
+        return None
+    return speed_mbps * 1_000_000 / 8   # convert Mbps → bytes/sec
+
 
 @app.get("/api/v1/speedtest/download", tags=["Health"])
-def speedtest_download():
-    """Stream 20MB of binary data for download speed testing."""
-    def iterfile():
-        for _ in range(20):
-            yield SPEEDTEST_CHUNK
+async def speedtest_download(user: User = Depends(get_current_user)):
+    """
+    Stream 20MB of binary data for download speed measurement.
+    Stream rate is physically throttled to the user's plan speed limit.
+    """
+    bps = _speedtest_bytes_per_sec(user)   # None = unlimited
+
+    async def iterfile():
+        sent = 0
+        while sent < _SPEEDTEST_TOTAL_BYTES:
+            chunk = _SPEEDTEST_CHUNK[:min(len(_SPEEDTEST_CHUNK), _SPEEDTEST_TOTAL_BYTES - sent)]
+            yield chunk
+            sent += len(chunk)
+            if bps:
+                # Sleep long enough so we don't exceed the plan cap
+                await asyncio.sleep(len(chunk) / bps)
+
     return StreamingResponse(iterfile(), media_type="application/octet-stream")
 
+
 @app.post("/api/v1/speedtest/upload", tags=["Health"])
-async def speedtest_upload(request: Request):
-    """Accept raw binary upload for speed testing."""
-    body = await request.body()
-    return {"status": "ok", "received_bytes": len(body)}
+async def speedtest_upload(request: Request, user: User = Depends(get_current_user)):
+    """
+    Accept raw binary upload for upload speed measurement.
+    Ingestion rate is throttled to the user's plan speed limit.
+    """
+    bps = _speedtest_bytes_per_sec(user)
+    received = 0
+    async for chunk in request.stream():
+        received += len(chunk)
+        if bps:
+            await asyncio.sleep(len(chunk) / bps)
+    return {"status": "ok", "received_bytes": received}
+
 
 @app.get("/api/v1/speedtest/ping", tags=["Health"])
 def speedtest_ping():
-    """Minimal endpoint for ping/latency measurement."""
+    """Minimal endpoint for ping/jitter measurement — responds immediately."""
     return {"status": "ok"}
 
 
