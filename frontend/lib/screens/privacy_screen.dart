@@ -20,7 +20,7 @@ class PrivacyScreen extends StatelessWidget {
   }
 
   Future<void> _launchAuditReport() async {
-    final Uri url = Uri.parse('https://atmosvpn.com/audit');
+    final Uri url = Uri.parse('https://atmosvpn.com/');
     try {
       await launchUrl(url, mode: LaunchMode.externalApplication);
     } catch (_) {}
@@ -34,7 +34,8 @@ class PrivacyScreen extends StatelessWidget {
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 20),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded,
+              color: Colors.white, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
@@ -238,7 +239,8 @@ class PrivacyScreen extends StatelessWidget {
                 children: [
                   const Padding(
                     padding: EdgeInsets.only(top: 6.0),
-                    child: Icon(Icons.circle, color: AppColors.textSecondary, size: 6),
+                    child: Icon(Icons.circle,
+                        color: AppColors.textSecondary, size: 6),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -289,7 +291,8 @@ class PrivacyScreen extends StatelessWidget {
       },
       {
         'title': 'Anonymous Crash Reports',
-        'purpose': 'Fully anonymous technical reports to fix bugs & improve stability',
+        'purpose':
+            'Fully anonymous technical reports to fix bugs & improve stability',
         'retention': '90 days maximum',
       },
       {
@@ -379,7 +382,8 @@ class PrivacyScreen extends StatelessWidget {
                 children: [
                   const Padding(
                     padding: EdgeInsets.only(top: 6.0),
-                    child: Icon(Icons.circle, color: AppColors.textSecondary, size: 6),
+                    child: Icon(Icons.circle,
+                        color: AppColors.textSecondary, size: 6),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -435,7 +439,8 @@ class PrivacyScreen extends StatelessWidget {
                 children: [
                   const Padding(
                     padding: EdgeInsets.only(top: 6.0),
-                    child: Icon(Icons.circle, color: AppColors.textSecondary, size: 6),
+                    child: Icon(Icons.circle,
+                        color: AppColors.textSecondary, size: 6),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -491,15 +496,18 @@ class PrivacyScreen extends StatelessWidget {
     final services = [
       {
         'name': 'Stripe',
-        'desc': 'Processes all core billing and subscription transactions securely without disclosing full card data to us.'
+        'desc':
+            'Processes all core billing and subscription transactions securely without disclosing full card data to us.'
       },
       {
         'name': 'Google Play & Apple Pay',
-        'desc': 'Handles in-app purchases and subscription registration on Android and iOS.'
+        'desc':
+            'Handles in-app purchases and subscription registration on Android and iOS.'
       },
       {
         'name': 'Hosting Services',
-        'desc': 'Secure, encrypted cloud and bare-metal server infrastructure hosts our backend API and global VPN nodes.'
+        'desc':
+            'Secure, encrypted cloud and bare-metal server infrastructure hosts our backend API and global VPN nodes.'
       },
     ];
 
@@ -552,7 +560,8 @@ class PrivacyScreen extends StatelessWidget {
             children: [
               const Padding(
                 padding: EdgeInsets.only(top: 6.0),
-                child: Icon(Icons.circle, color: AppColors.textSecondary, size: 6),
+                child:
+                    Icon(Icons.circle, color: AppColors.textSecondary, size: 6),
               ),
               const SizedBox(width: 12),
               Expanded(

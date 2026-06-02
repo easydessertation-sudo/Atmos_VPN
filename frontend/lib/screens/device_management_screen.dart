@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/design_system.dart';
 import '../utils/api_service.dart';
+import '../utils/device_id.dart';
 import '../widgets/app_container.dart';
 
 class DeviceManagementScreen extends StatefulWidget {
@@ -15,6 +17,7 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
   List<dynamic> _devices = [];
   bool _loading = true;
   String? _error;
+  String? _currentDeviceId;
 
   @override
   void initState() {
@@ -28,7 +31,9 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
       _error = null;
     });
     try {
+      _currentDeviceId = await DeviceId.get();
       final resp = await ApiService.getDevices();
+      
       if (resp['success'] == true) {
         setState(() {
           _devices = resp['data'] ?? [];
@@ -47,7 +52,7 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
     }
   }
 
-  Future<void> _removeDevice(String id) async {
+  Future<void> _removeDevice(String id, bool isCurrentDevice) async {
     try {
       final res = await ApiService.removeDevice(id);
       if (res['success'] == true) {
@@ -60,7 +65,21 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
             ),
           );
         }
-        await _loadDevices();
+        
+        if (isCurrentDevice) {
+          try {
+            await ApiService.logout();
+          } catch (_) {}
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.remove('access_token');
+          await prefs.remove('refresh_token');
+          await prefs.remove('auth_provider');
+          if (mounted) {
+            Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+          }
+        } else {
+          await _loadDevices();
+        }
       } else {
         if (mounted) {
           String rawMsg = 'Failed to remove device.';
@@ -181,10 +200,13 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
                         separatorBuilder: (_, __) => const SizedBox(height: 12),
                         itemBuilder: (context, i) {
                           final device = _devices[i];
+                          // The device's UUID is usually returned in device_id, sometimes id.
+                          final bool isCurrent = device['device_id'] == _currentDeviceId || device['id'] == _currentDeviceId;
                           return _DeviceCard(
                             device: device,
                             platformIcon: _platformIcon(device['platform']),
-                            onRemove: () => _removeDevice(device['id']),
+                            isCurrentDevice: isCurrent,
+                            onRemove: () => _removeDevice(device['id'], isCurrent),
                           )
                               .animate()
                               .fadeIn(delay: Duration(milliseconds: i * 80))
@@ -199,10 +221,12 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
 class _DeviceCard extends StatelessWidget {
   final Map<String, dynamic> device;
   final IconData platformIcon;
+  final bool isCurrentDevice;
   final VoidCallback onRemove;
   const _DeviceCard(
       {required this.device,
       required this.platformIcon,
+      required this.isCurrentDevice,
       required this.onRemove});
 
   @override
@@ -236,11 +260,30 @@ class _DeviceCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(device['name'] ?? 'Unknown Device',
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 15)),
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(device['name'] ?? 'Unknown Device',
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 15)),
+                    ),
+                    if (isCurrentDevice) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppColors.primaryBlue.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: AppColors.primaryBlue.withValues(alpha: 0.5)),
+                        ),
+                        child: const Text('THIS DEVICE', style: TextStyle(color: AppColors.primaryBlue, fontSize: 10, fontWeight: FontWeight.bold)),
+                      ),
+                    ],
+                  ],
+                ),
                 const SizedBox(height: 4),
                 Text('Last seen: $lastSeenStr',
                     style: const TextStyle(

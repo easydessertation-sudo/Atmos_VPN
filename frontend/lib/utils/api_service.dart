@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'device_id.dart';
+import '../main.dart';
 
 class ApiService {
   /// Production backend — all routes are under /api/
@@ -38,8 +39,26 @@ class ApiService {
       if (refreshed) {
         response = await request(); // Retry with new token
       }
+      
+      // Aggressive wipe on 401 if refresh failed or was rejected (remote device removal)
+      if (response.statusCode == 401) {
+        await _forceLogout();
+      }
     }
     return response;
+  }
+
+  static Future<void> _forceLogout() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('access_token');
+    await prefs.remove('refresh_token');
+    await prefs.remove('auth_provider');
+    
+    try {
+      if (navigatorKey.currentState != null) {
+        navigatorKey.currentState!.pushNamedAndRemoveUntil('/login', (route) => false);
+      }
+    } catch (_) {}
   }
 
   static Future<bool> _tryRefreshToken() async {

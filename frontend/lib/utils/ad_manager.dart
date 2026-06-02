@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 
 class AdManager {
@@ -103,8 +104,13 @@ class AdManager {
     _appOpenAd!.show();
   }
 
+  static bool _isInterstitialAdLoading = false;
+
   static void loadInterstitialAd() {
     if (kIsWeb) return;
+    if (_isInterstitialAdLoading) return;
+    
+    _isInterstitialAdLoading = true;
     InterstitialAd.load(
       adUnitId: interstitialAdUnitId,
       request: const AdRequest(),
@@ -112,13 +118,21 @@ class AdManager {
         onAdLoaded: (ad) {
           _interstitialAd = ad;
           _isInterstitialAdLoaded = true;
+          _isInterstitialAdLoading = false;
         },
-        onAdFailedToLoad: (error) {},
+        onAdFailedToLoad: (error) {
+          _isInterstitialAdLoaded = false;
+          _isInterstitialAdLoading = false;
+          // Retry loading after a delay if it fails
+          Future.delayed(const Duration(seconds: 15), () {
+            loadInterstitialAd();
+          });
+        },
       ),
     );
   }
 
-  static void showInterstitialAd({Function? onAdDismissed}) {
+  static void showInterstitialAd({BuildContext? context, Function? onAdDismissed, bool continueIfNoAd = false}) {
     if (kIsWeb) {
       if (onAdDismissed != null) onAdDismissed();
       return;
@@ -150,20 +164,51 @@ class AdManager {
       // Ad is ready — show immediately
       _doShow();
     } else {
-      // Ad is not ready yet (still loading from previous reload).
-      // Poll every 250ms for up to 3 seconds, then give up.
+      // Ad is not ready yet. 
+      // If it's not even loading, trigger a load now!
+      if (!_isInterstitialAdLoading) {
+        loadInterstitialAd();
+      }
+
+      bool dialogShown = false;
+      if (context != null && context.mounted) {
+        dialogShown = true;
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => const Center(child: CircularProgressIndicator(color: Colors.blue)),
+        );
+      }
+
+      // Poll every 250ms for up to 10 seconds, then give up.
       int attempts = 0;
-      const maxAttempts = 12; // 12 × 250ms = 3 seconds
+      const maxAttempts = 40; // 40 x 250ms = 10 seconds
 
       Future<void> _poll() async {
         if (_isInterstitialAdLoaded && _interstitialAd != null) {
+          if (dialogShown && context != null && context.mounted) Navigator.pop(context);
           _doShow();
           return;
         }
         if (attempts >= maxAttempts) {
-          // Timed out — proceed without showing an ad
+          if (dialogShown && context != null && context.mounted) Navigator.pop(context);
+          // Timed out — no ad available
+          if (continueIfNoAd) {
+             // Let the user proceed with the feature anyway!
+             if (onAdDismissed != null) onAdDismissed();
+          } else {
+             if (context != null && context.mounted) {
+               ScaffoldMessenger.of(context).showSnackBar(
+                 const SnackBar(
+                   content: Text('No ads available right now, try again later.'),
+                   behavior: SnackBarBehavior.floating,
+                   backgroundColor: Colors.redAccent,
+                   duration: Duration(seconds: 3),
+                 ),
+               );
+             }
+          }
           loadInterstitialAd();
-          if (onAdDismissed != null) onAdDismissed();
           return;
         }
         attempts++;

@@ -107,8 +107,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final int adsRemaining = adsNeeded - adsWatched;
     
     final dialogContent = isStarterServer 
-        ? 'Your Starter 45-minute session has ended. Watch $adsRemaining more ad(s) to get 45 more minutes, or upgrade for unlimited access.'
-        : 'Your Free 30-minute session has ended. Watch an ad to get 30 more minutes, or upgrade for unlimited access.';
+        ? 'Watch $adsRemaining more ad(s) to extend your secure connection for 45 minutes, or upgrade for unlimited access.'
+        : 'Watch a short ad to extend your secure connection for 30 minutes, or upgrade for unlimited access.';
     final buttonText = isStarterServer ? 'WATCH AD ($adsRemaining)' : 'WATCH AD (1)';
 
     await showDialog(
@@ -117,22 +117,39 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.cardBackground,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: const Text('⏰ Session Expired',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900)),
+        title: Text(isStarterServer ? '📺 Watch Ad for 45 Mins' : '📺 Watch Ad for 30 Mins',
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900)),
         content: Text(dialogContent,
             style: const TextStyle(color: AppColors.textSecondary)),
         actions: [
           TextButton(
             onPressed: () {
               Navigator.pop(ctx);
-              AdManager.showInterstitialAd(onAdDismissed: () async {
-                bool claimed = await vpn.watchAd(tier: tier);
-                if (claimed && vpn.selectedServer != null) {
-                  // Connect automatically once all ads are watched!
-                  vpn.connect(vpn.selectedServer!['id']!.toString(), mode: 'standard');
-                } else if (isStarterServer && vpn.starterAdsWatched > 0) {
-                  // If they watched 1 but need 2, re-trigger the dialog so they can click the 2nd one
+              AdManager.showInterstitialAd(context: context, onAdDismissed: () {
+                if (isStarterServer && vpn.starterAdsWatched == 0) {
+                  // Intermediate ad: Optimistically show next dialog INSTANTLY
+                  vpn.optimisticallyIncrementStarterAds();
                   vpn.triggerSessionExpiredDialog();
+                  
+                  // Fire-and-forget the backend request silently
+                  vpn.watchAd(tier: tier).then((claimed) {
+                    if (claimed && vpn.selectedServer != null) {
+                      vpn.connect(vpn.selectedServer!['id']!.toString(), mode: 'standard');
+                    }
+                  });
+                } else {
+                  // Final ad: Show a quick loading spinner while claiming final reward
+                  showDialog(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (ctx) => const Center(child: CircularProgressIndicator(color: AppColors.primaryBlue)),
+                  );
+                  vpn.watchAd(tier: tier).then((claimed) {
+                    if (context.mounted) Navigator.pop(context); // pop loading dialog
+                    if (claimed && vpn.selectedServer != null) {
+                      vpn.connect(vpn.selectedServer!['id']!.toString(), mode: 'standard');
+                    }
+                  });
                 }
               });
             },
@@ -368,10 +385,29 @@ class _HomeTab extends StatelessWidget {
                               onUpgrade: () =>
                                   Navigator.pushNamed(context, '/account/pricing'),
                               onWatchAd: () {
-                                AdManager.showInterstitialAd(onAdDismissed: () async {
-                                  bool claimed = await vpn.watchAd(tier: tier);
-                                  if (claimed && vpn.selectedServer != null) {
-                                    vpn.connect(vpn.selectedServer!['id']!.toString(), mode: 'standard');
+                                AdManager.showInterstitialAd(context: context, onAdDismissed: () {
+                                  if (isStarterServer && vpn.starterAdsWatched == 0) {
+                                    vpn.optimisticallyIncrementStarterAds();
+                                    vpn.triggerSessionExpiredDialog();
+                                    
+                                    vpn.watchAd(tier: tier).then((claimed) {
+                                      if (claimed && vpn.selectedServer != null) {
+                                        vpn.connect(vpn.selectedServer!['id']!.toString(), mode: 'standard');
+                                      }
+                                    });
+                                  } else {
+                                    showDialog(
+                                      context: context,
+                                      barrierDismissible: false,
+                                      builder: (ctx) => const Center(child: CircularProgressIndicator(color: AppColors.primaryBlue)),
+                                    );
+
+                                    vpn.watchAd(tier: tier).then((claimed) {
+                                      if (context.mounted) Navigator.pop(context);
+                                      if (claimed && vpn.selectedServer != null) {
+                                        vpn.connect(vpn.selectedServer!['id']!.toString(), mode: 'standard');
+                                      }
+                                    });
                                   }
                                 });
                               },
@@ -559,7 +595,9 @@ class _HomeTab extends StatelessWidget {
     final isConnecting = !vpn.isConnected &&
         (vpn.status == 'Provisioning...' ||
             vpn.status == 'Configuring...' ||
-            vpn.status == 'Connecting...');
+            vpn.status == 'Connecting...' ||
+            vpn.status == 'Starting...' ||
+            vpn.status == 'Disconnecting...');
     final hasFailed = vpn.lastError != null && !vpn.isConnected;
 
     return Column(
@@ -824,7 +862,7 @@ class _HomeTab extends StatelessWidget {
       children: [
         Expanded(
             child: _StatPill(
-                Icons.timer_rounded, ping, 'Ping', AppColors.success)),
+                Icons.signal_cellular_alt_rounded, ping, 'Ping', AppColors.success)),
         const SizedBox(width: 10),
         Expanded(
             child: _StatPill(Icons.speed_rounded, connected ? load : '--',
@@ -879,13 +917,6 @@ class _HomeTab extends StatelessWidget {
                           child: CircularProgressIndicator(strokeWidth: 2))))
               : Column(
                   children: [
-                    _QuickToggle(
-                        'Kill Switch',
-                        Icons.power_off_rounded,
-                        vpn.securityFeatures['kill_switch_enabled'] == true,
-                        activeColor,
-                        (v) => onToggleSecurity('kill_switch_enabled', v)),
-                    const SizedBox(height: 4),
                     _QuickToggle(
                         'DNS Leak Guard',
                         Icons.dns_rounded,

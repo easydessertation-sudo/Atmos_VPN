@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Monochrome vector icon for Android notification status bar.
+     Android 5.0+ requires notification icons to be flat/alpha-only (white on transparent).
+     Using a colored launcher icon (@mipmap/ic_launcher) causes a grey square on most devices. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Shield shape representing VPN/security -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M12,2 L4,6 L4,12 C4,16.55 7.45,20.74 12,22 C16.55,20.74 20,16.55 20,12 L20,6 L12,2 Z
+                          M12,4.18 L18,7.3 L18,12 C18,15.54 15.39,18.87 12,19.93 C8.61,18.87 6,15.54 6,12 L6,7.3 L12,4.18 Z
+                          M11,9 L11,13 L13,13 L13,9 Z
+                          M11,15 L11,17 L13,17 L13,15 Z"/>
+</vector>

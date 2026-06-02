@@ -28,7 +28,18 @@ class _NotificationScreenState extends State<NotificationScreen> {
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
-    _fetchNotifications();
+    
+    // Instant UI load using cached data from VPNProvider
+    final vpn = context.read<VPNProvider>();
+    if (vpn.cachedNotifications.isNotEmpty) {
+      _notifications = List.from(vpn.cachedNotifications);
+      _unreadCount = vpn.unreadCount;
+      _isLoading = false;
+    }
+    
+    // Fetch fresh data in the background silently if we have cached data,
+    // or with a loading spinner if we don't.
+    _fetchNotifications(showLoading: _notifications.isEmpty);
   }
 
   @override
@@ -45,9 +56,13 @@ class _NotificationScreenState extends State<NotificationScreen> {
     }
   }
 
-  Future<void> _fetchNotifications() async {
+  Future<void> _fetchNotifications({bool showLoading = true}) async {
+    if (showLoading) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
     setState(() {
-      _isLoading = true;
       _page = 1;
     });
     try {
@@ -95,28 +110,56 @@ class _NotificationScreenState extends State<NotificationScreen> {
   }
 
   Future<void> _markAsRead(String id) async {
+    // Optimistic UI Update: Instantly change it to read
+    setState(() {
+      for (var notif in _notifications) {
+        if (notif['id'] == id) {
+          notif['is_read'] = true;
+        }
+      }
+      if (_unreadCount > 0) _unreadCount--;
+    });
+
+    // Fire and forget backend request
     try {
       final response = await ApiService.markNotificationRead(id);
-      if (response['success'] == true) {
-        _fetchNotifications();
+      if (response['success'] == true && mounted) {
+        context.read<VPNProvider>().fetchNotifications();
       }
     } catch (_) {}
   }
 
   Future<void> _markAllAsRead() async {
+    // Optimistic UI Update
+    setState(() {
+      for (var notif in _notifications) {
+        notif['is_read'] = true;
+      }
+      _unreadCount = 0;
+    });
+
     try {
       final response = await ApiService.markAllNotificationsRead();
-      if (response['success'] == true) {
-        _fetchNotifications();
+      if (response['success'] == true && mounted) {
+        context.read<VPNProvider>().fetchNotifications();
       }
     } catch (_) {}
   }
 
   Future<void> _deleteNotification(String id) async {
+    // Optimistic UI Update
+    setState(() {
+      final notif = _notifications.firstWhere((n) => n['id'] == id, orElse: () => null);
+      if (notif != null) {
+        if (notif['is_read'] == false && _unreadCount > 0) _unreadCount--;
+        _notifications.removeWhere((n) => n['id'] == id);
+      }
+    });
+
     try {
       final response = await ApiService.deleteNotification(id);
-      if (response['success'] == true) {
-        _fetchNotifications();
+      if (response['success'] == true && mounted) {
+        context.read<VPNProvider>().fetchNotifications();
       }
     } catch (_) {}
   }
@@ -192,7 +235,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                   : _notifications.isEmpty
                       ? _buildEmptyState()
                       : RefreshIndicator(
-                          onRefresh: _fetchNotifications,
+                          onRefresh: () => _fetchNotifications(showLoading: true),
                           color: AppColors.primaryBlue,
                           backgroundColor: AppColors.cardBackground,
                           child: ListView.builder(
@@ -227,12 +270,12 @@ class _NotificationScreenState extends State<NotificationScreen> {
         children: [
           _filterChip('All', !_unreadOnly, () {
             setState(() => _unreadOnly = false);
-            _fetchNotifications();
+            _fetchNotifications(showLoading: true);
           }),
           const SizedBox(width: 12),
           _filterChip('Unread', _unreadOnly, () {
             setState(() => _unreadOnly = true);
-            _fetchNotifications();
+            _fetchNotifications(showLoading: true);
           }),
           const Spacer(),
           if (_unreadCount > 0)

@@ -6,6 +6,8 @@ import '../utils/api_service.dart';
 import 'package:provider/provider.dart';
 import '../main.dart';
 import '../utils/ad_manager.dart';
+import '../services/vpn_service.dart';
+import 'dart:io';
 
 class SecurityCenterScreen extends StatefulWidget {
   const SecurityCenterScreen({super.key});
@@ -18,7 +20,6 @@ class _SecurityCenterScreenState extends State<SecurityCenterScreen> {
   // Score is computed live from switch states — no API timing issue
   int _computeScore(Map<String, bool> features) {
     final keys = [
-      'kill_switch_enabled',
       'dns_leak_protection',
       'auto_connect_wifi',
       'ad_blocker_enabled',
@@ -26,7 +27,50 @@ class _SecurityCenterScreenState extends State<SecurityCenterScreen> {
       'malware_protection',
     ];
     final onCount = keys.where((k) => features[k] == true).length;
-    return ((onCount / keys.length) * 100).round();
+    // Assume Kill Switch is enabled for scoring purposes since it's an OS setting
+    return (((onCount + 1) / (keys.length + 1)) * 100).round();
+  }
+
+  void _showKillSwitchDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.cardBackground,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: const Text('Manage Kill Switch',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900)),
+        content: const Text(
+          'To enable or disable the Kill Switch, please configure it in your system settings:\n\n'
+          '1. Tap "Open Settings" below.\n'
+          '2. Tap the gear icon (⚙️) next to AtmosVPN.\n'
+          '3. Turn "Always-on VPN" and "Block connections without VPN" ON or OFF according to your preference.',
+          style: TextStyle(color: AppColors.textSecondary, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('CANCEL',
+                style: TextStyle(
+                    color: AppColors.textSecondary,
+                    fontWeight: FontWeight.bold)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              VpnService.openVpnSettings();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primaryBlue,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+            ),
+            child: const Text('OPEN SETTINGS',
+                style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
   }
 
   // IP Check state
@@ -82,7 +126,7 @@ class _SecurityCenterScreenState extends State<SecurityCenterScreen> {
   Future<void> _toggleFeature(String key, bool value) async {
     final plan = context.read<VPNProvider>().userData?['plan']?.toString() ?? 'free';
     if (plan == 'free') {
-      AdManager.showInterstitialAd(onAdDismissed: () async {
+      AdManager.showInterstitialAd(context: context, onAdDismissed: () async {
         await context.read<VPNProvider>().toggleSecurityFeature(key, value);
       });
     } else {
@@ -112,7 +156,7 @@ class _SecurityCenterScreenState extends State<SecurityCenterScreen> {
     }
 
     if (plan == 'free') {
-      AdManager.showInterstitialAd(onAdDismissed: proceed);
+      AdManager.showInterstitialAd(context: context, onAdDismissed: proceed);
     } else {
       proceed();
     }
@@ -136,6 +180,7 @@ class _SecurityCenterScreenState extends State<SecurityCenterScreen> {
         // Step 2: Get VPN status to check if connected and what IP was assigned
         final vpn = context.read<VPNProvider>();
         final isConnected = vpn.isConnected;
+        final realIp = vpn.realIp;
 
         await Future.delayed(const Duration(seconds: 1)); // simulate deeper check
 
@@ -147,13 +192,24 @@ class _SecurityCenterScreenState extends State<SecurityCenterScreen> {
                   'Not connected to VPN.\nConnect first to test for leaks.\nYour IP: ${currentIp ?? "Unknown"}';
             });
           } else {
-            // When connected, check if the visible IP matches server's IP (not the device's real IP)
-            // If they're routing correctly, the IP should be the VPN server's IP
-            setState(() {
-              _leakDetected = false;
-              _leakTestResult =
-                  'No DNS leaks detected ✓\nVisible IP: ${currentIp ?? "Unknown"}\nTraffic is fully encrypted through VPN tunnel.';
-            });
+            if (currentIp == null || realIp == null) {
+              setState(() {
+                _leakDetected = null;
+                _leakTestResult = 'Could not determine IP addresses for leak test. Ensure you have internet connection.';
+              });
+            } else if (currentIp == realIp) {
+              setState(() {
+                _leakDetected = true;
+                _leakTestResult =
+                    'DNS/IP LEAK DETECTED ⚠️\nYour real IP ($realIp) is exposed!\nTraffic is NOT fully encrypted through VPN tunnel.';
+              });
+            } else {
+              setState(() {
+                _leakDetected = false;
+                _leakTestResult =
+                    'No DNS/IP leaks detected ✅\nVisible IP: $currentIp\nTraffic is fully encrypted through VPN tunnel.';
+              });
+            }
           }
         }
       } catch (e) {
@@ -169,7 +225,7 @@ class _SecurityCenterScreenState extends State<SecurityCenterScreen> {
     }
 
     if (plan == 'free') {
-      AdManager.showInterstitialAd(onAdDismissed: proceed);
+      AdManager.showInterstitialAd(context: context, onAdDismissed: proceed);
     } else {
       proceed();
     }
@@ -192,7 +248,7 @@ class _SecurityCenterScreenState extends State<SecurityCenterScreen> {
     }
 
     if (plan == 'free') {
-      AdManager.showInterstitialAd(onAdDismissed: proceed);
+      AdManager.showInterstitialAd(context: context, onAdDismissed: proceed);
     } else {
       proceed();
     }
@@ -374,7 +430,7 @@ class _SecurityCenterScreenState extends State<SecurityCenterScreen> {
     final items = [
       (
         'kill_switch_enabled',
-        'Kill Switch',
+        'Manage Kill Switch',
         Icons.power_off_rounded,
         'Blocks internet if VPN drops'
       ),
@@ -434,6 +490,39 @@ class _SecurityCenterScreenState extends State<SecurityCenterScreen> {
               final title = e.value.$2;
               final icon = e.value.$3;
               final desc = e.value.$4;
+
+              if (apiKey == 'kill_switch_enabled' && Platform.isAndroid) {
+                return Column(
+                  children: [
+                    ListTile(
+                      onTap: _showKillSwitchDialog,
+                      title: Text(title,
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 15)),
+                      subtitle: Text(desc,
+                          style: const TextStyle(
+                              color: AppColors.textSecondary, fontSize: 12)),
+                      trailing: const Icon(Icons.arrow_forward_ios_rounded,
+                          color: AppColors.textSecondary, size: 16),
+                      leading: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: AppColors.primaryBlue.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child:
+                            Icon(icon, color: AppColors.primaryBlue, size: 20),
+                      ),
+                    ),
+                    if (e.key < items.length - 1)
+                      const Divider(
+                          color: AppColors.divider, height: 1, indent: 64),
+                  ],
+                );
+              }
+
               final val = vpn.securityFeatures[apiKey] == true;
               return Column(
                 children: [

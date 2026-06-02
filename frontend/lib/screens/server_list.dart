@@ -335,6 +335,7 @@ class _ServerListScreenState extends State<ServerListScreen>
                                   // before the VPN tunnel starts.
                                   if (provider.isFreeUser) {
                                     AdManager.showInterstitialAd(
+                                      context: context,
                                       onAdDismissed: () {
                                         Future.delayed(
                                           const Duration(milliseconds: 500),

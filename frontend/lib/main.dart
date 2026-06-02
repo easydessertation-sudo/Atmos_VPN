@@ -8,7 +8,9 @@ import 'dart:math' as math;
 import 'package:app_links/app_links.dart';
 import 'package:provider/provider.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:wireguard_flutter/wireguard_flutter.dart';
+import 'services/vpn_service.dart';
+import 'package:upgrader/upgrader.dart';
+import 'package:flutter/services.dart';
 import 'package:cryptography/cryptography.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
@@ -45,12 +47,12 @@ import 'screens/privacy_screen.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
-// Top-level FCM background handler - must be defined here at the top level
-// of main.dart so the Android background isolate can find it.
+// The native AtmosVpnFirebaseService.kt handles ALL FCM messages natively.
+// This Dart handler is kept as a no-op so Firebase plugin doesn't complain,
+// but the native service shows the actual notification (works even when killed).
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  // Delegate all handling to the NotificationService
-  await notificationBackgroundHandler(message);
+  // No-op: handled natively in AtmosVpnFirebaseService.kt
 }
 
 void main() async {
@@ -69,7 +71,10 @@ void main() async {
   runApp(
     MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => VPNProvider()),
+        ChangeNotifierProvider(
+          create: (_) => VPNProvider(),
+          lazy: false, // Eagerly load all data (servers, profile) in the background during the splash screen/app open ad
+        ),
       ],
       child: const AtmosVPNApp(),
     ),
@@ -151,9 +156,9 @@ class _AtmosVPNAppState extends State<AtmosVPNApp> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      // Only show the app open ad for free users
+      // Only show the app open ad for free users who are actually logged in
       final vpn = navigatorKey.currentContext?.read<VPNProvider>();
-      if (vpn != null && vpn.isFreeUser) {
+      if (vpn != null && vpn.isFreeUser && vpn.userData != null) {
         AdManager.showAppOpenAdIfAvailable();
       }
     }
@@ -168,8 +173,8 @@ class _AtmosVPNAppState extends State<AtmosVPNApp> with WidgetsBindingObserver {
       theme: AppDesign.darkTheme,
       initialRoute: '/',
       routes: {
-        '/': (context) => kIsWeb ? const WebLandingPage() : const SplashScreen(),
-        '/splash': (context) => const SplashScreen(),
+        '/': (context) => _UpgradeWrapper(child: kIsWeb ? const WebLandingPage() : const SplashScreen()),
+        '/splash': (context) => _UpgradeWrapper(child: const SplashScreen()),
         '/trial': (context) => const TrialOfferScreen(),
         // ── Web Marketing ──────────────────────────────────────────
         '/features': (context) => const FeaturesPage(),
@@ -205,12 +210,12 @@ class _AtmosVPNAppState extends State<AtmosVPNApp> with WidgetsBindingObserver {
         '/pricing': (context) => const PricingScreen(),
         // ── Auth ───────────────────────────────────────────────────
         '/onboarding': (context) => const OnboardingScreen(),
-        '/login': (context) => const LoginScreen(),
+        '/login': (context) => _UpgradeWrapper(child: const LoginScreen()),
         '/signup': (context) => const SignupScreen(),
         '/verify-email': (context) => const EmailVerificationScreen(),
         // ── App (post-login, responsive) ───────────────────────────
-        '/home': (context) => const DashboardScreen(),
-        '/dashboard': (context) => const DashboardScreen(),
+        '/home': (context) => _UpgradeWrapper(child: const DashboardScreen()),
+        '/dashboard': (context) => _UpgradeWrapper(child: const DashboardScreen()),
         '/server-list': (context) => const ServerListScreen(),
         '/map': (context) => const MapViewScreen(),
         '/modes': (context) => const ModeSelectionScreen(),
@@ -235,6 +240,34 @@ class _AtmosVPNAppState extends State<AtmosVPNApp> with WidgetsBindingObserver {
         '/company/affiliates': (context) =>
             const FooterContentPage(data: FooterContentCatalog.affiliates),
       },
+    );
+  }
+}
+
+class _UpgraderMessages extends UpgraderMessages {
+  @override
+  String get buttonTitleIgnore => 'Cancel';
+}
+
+class _UpgradeWrapper extends StatelessWidget {
+  final Widget child;
+  const _UpgradeWrapper({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    if (kIsWeb) return child;
+    return UpgradeAlert(
+      upgrader: Upgrader(
+        messages: _UpgraderMessages(),
+      ),
+      showIgnore: true,         // We changed 'Ignore' to 'Cancel' via _UpgraderMessages
+      showLater: false,         // Hide 'Later' button
+      showReleaseNotes: false,  // Hide the "What's new" release notes section
+      onIgnore: () {
+        SystemNavigator.pop();  // Exit the app if they cancel
+        return false;           // Return false so the dialog doesn't just dismiss normally
+      },
+      child: child,
     );
   }
 }
@@ -297,14 +330,15 @@ class VPNProvider with ChangeNotifier {
   Map<String, dynamic>? _selectedServer;
   List<dynamic> _servers = [];
   String? _lastError;
+  String? _realIp;
   int _remainingSeconds = 0; // Safe default — real value loaded from backend in _syncSessionTime()
   bool _isSessionTimeLoaded = false; // False until first backend sync completes
   Timer? _sessionTimer;
   Timer? _notifTimer;
   int _unreadCount = 0;
+  List<dynamic> _cachedNotifications = [];
   final Set<String> _notifiedIds = {};
-  bool _wgInitialized = false;
-  StreamSubscription<VpnStage>? _vpnStageSub;
+  Timer? _vpnStatusPoller;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
   Map<String, bool> _securityFeatures = {
     'kill_switch_enabled': false,
@@ -321,13 +355,19 @@ class VPNProvider with ChangeNotifier {
   bool get isConnected => _isConnected;
   String get status => _status;
   String get currentServer => _currentServer;
+  String? get realIp => _realIp;
   bool get isFreeUser => _isFreeUser;
   int get remainingSeconds => _remainingSeconds;
   int get remainingMinutes => _remainingSeconds ~/ 60;
   bool get hasUpgraded => _hasUpgraded;
   bool get isSessionTimeLoaded => _isSessionTimeLoaded;
   int get unreadCount => _unreadCount;
+  List<dynamic> get cachedNotifications => _cachedNotifications;
   int get starterAdsWatched => _starterAdsWatched;
+  void optimisticallyIncrementStarterAds() {
+    _starterAdsWatched++;
+    notifyListeners();
+  }
   Map<String, dynamic>? get userData => _userData;
   Map<String, dynamic>? get selectedServer => _selectedServer;
   List<dynamic> get servers => _servers;
@@ -384,7 +424,7 @@ class VPNProvider with ChangeNotifier {
   }
 
   Future<void> _init() async {
-    await _initWireGuard();
+    _startVpnStatusPoller();
     
     // Load previously notified IDs to prevent duplicate alerts across app restarts
     final prefs = await SharedPreferences.getInstance();
@@ -401,6 +441,7 @@ class VPNProvider with ChangeNotifier {
       fetchServers(),
       fetchSecuritySettings(),
       checkConnectionStatus(),
+      fetchRealIp(),
       fetchNotifications(), // Instantly check for new notifications on launch
     ]);
     
@@ -473,6 +514,15 @@ class VPNProvider with ChangeNotifier {
     });
   }
 
+  Future<void> fetchRealIp() async {
+    try {
+      final resp = await ApiService.getIp();
+      _realIp = resp['data']?['ip']?.toString() ?? resp['ip']?.toString();
+    } catch (_) {
+      // Silently fail
+    }
+  }
+
   Future<void> _autoConnectWifi() async {
     if (_isConnected ||
         _status == 'Connecting...' ||
@@ -501,50 +551,61 @@ class VPNProvider with ChangeNotifier {
     } catch (_) {}
   }
 
-  // ── WireGuard engine init ──────────────────────────────────────────────────
-  Future<void> _initWireGuard() async {
-    if (kIsWeb) return;
-    try {
-      await WireGuardFlutter.instance.initialize(interfaceName: 'wg0');
-      _wgInitialized = true;
-      _vpnStageSub =
-          WireGuardFlutter.instance.vpnStageSnapshot.listen(_handleVpnStage);
-    } catch (e) {
-      print('[WireGuard] init error: $e');
-    }
-  }
+  // ── Native VPN status poller ──────────────────────────────────────────────
+  /// Polls the native VPN service every 2 seconds to detect if the tunnel
+  /// was brought up or torn down by the OS (e.g. Kill Switch recovery).
+  int _connectingTicks = 0;
 
-  void _handleVpnStage(VpnStage stage) {
-    print('[WireGuard] stage: $stage');
-    switch (stage) {
-      case VpnStage.connected:
-        _isConnected = true;
-        _status = 'Connected';
-        _lastError = null;
-        break;
-      case VpnStage.disconnected:
-      case VpnStage.noConnection:
-      case VpnStage.exiting:
-        _isConnected = false;
-        _status = 'Disconnected';
-        _currentServer = 'None';
-        break;
-      case VpnStage.connecting:
-      case VpnStage.waitingConnection:
-      case VpnStage.preparing:
-      case VpnStage.reconnect:
-      case VpnStage.authenticating:
-        _status = 'Connecting...';
-        break;
-      case VpnStage.denied:
-        _isConnected = false;
-        _status = 'Disconnected';
-        _lastError = 'VPN permission denied by user.';
-        break;
-      default:
-        break;
-    }
-    notifyListeners();
+  void _startVpnStatusPoller() {
+    if (kIsWeb) return;
+    _vpnStatusPoller?.cancel();
+    _vpnStatusPoller = Timer.periodic(const Duration(seconds: 2), (_) async {
+      try {
+        final nativeConnected = await VpnService.isConnected();
+        final nativeError = await VpnService.getError();
+        
+        // Handle native errors
+        if (nativeError != null && nativeError.isNotEmpty) {
+           if (_status == 'Connecting...' || _status == 'Connected') {
+              _isConnected = false;
+              _status = 'Connection Failed';
+              _lastError = nativeError;
+              notifyListeners();
+           }
+           return;
+        }
+
+        if (nativeConnected && !_isConnected) {
+          // Native tunnel came up
+          _isConnected = true;
+          _status = 'Connected';
+          _lastError = null;
+          _connectingTicks = 0;
+          notifyListeners();
+        } else if (!nativeConnected && _isConnected && _status == 'Connected') {
+          // Native tunnel dropped unexpectedly (Kill Switch or system close)
+          _isConnected = false;
+          _status = 'Disconnected';
+          _currentServer = 'None';
+          _connectingTicks = 0;
+          _remainingSeconds = 0; // Clear reward time (Use it or lose it)
+          ApiService.disconnect(); // Tell backend to clear the session!
+          notifyListeners();
+        } else if (!nativeConnected && !_isConnected && _status == 'Connecting...') {
+          // Track timeout
+          _connectingTicks++;
+          if (_connectingTicks >= 8) {
+             _isConnected = false;
+             _status = 'Connection Failed';
+             _lastError = 'Connection timed out while waiting for tunnel to establish.';
+             _connectingTicks = 0;
+             notifyListeners();
+          }
+        } else {
+          _connectingTicks = 0; // reset if in any other state
+        }
+      } catch (_) {}
+    });
   }
 
   // ── Keypair helpers ────────────────────────────────────────────────────────
@@ -763,6 +824,13 @@ class VPNProvider with ChangeNotifier {
   // ── Profile / Servers ──────────────────────────────────────────────────────
   Future<void> fetchProfile() async {
     try {
+      // Print token for Postman testing
+      final prefs = await SharedPreferences.getInstance();
+      debugPrint('====================================');
+      debugPrint('POSTMAN ACCESS TOKEN:');
+      debugPrint(prefs.getString('access_token'));
+      debugPrint('====================================');
+
       final response = await ApiService.getMe();
       if (response['success'] == true) {
         _userData = response['data']['user'];
@@ -791,6 +859,12 @@ class VPNProvider with ChangeNotifier {
         final data = response['data'];
         final int newUnreadCount = data['unread_count'] ?? 0;
         final List<dynamic> notifs = data['notifications'] ?? [];
+
+        if (_unreadCount != newUnreadCount || _cachedNotifications.isEmpty) {
+          _unreadCount = newUnreadCount;
+          _cachedNotifications = notifs;
+          notifyListeners();
+        }
 
         // Check for new notifications to push
         if (!kIsWeb) {
@@ -853,8 +927,9 @@ class VPNProvider with ChangeNotifier {
         _isConnected = false;
         _status = 'Disconnected';
         _currentServer = 'None';
+        _selectedServer = null;
+        notifyListeners();
       }
-      notifyListeners();
     } catch (_) {}
   }
 
@@ -1009,46 +1084,44 @@ class VPNProvider with ChangeNotifier {
     try {
       // 1 + 2. Run keypair loading and stale config cleanup IN PARALLEL
       //        Both are independent, so no need to wait for one before the other.
-      final bool useRealTunnel = !kIsWeb && _wgInitialized;
+      final bool useRealTunnel = !kIsWeb;
       String privateKey = '';
       String publicKey = 'placeholder_key=';
 
-      await Future.wait([
-        // Task A: Get or generate the WireGuard keypair
-        if (useRealTunnel)
-          () async {
-            final kp = await _getOrCreateKeyPair();
-            privateKey = kp.$1;
-            publicKey = kp.$2;
-            debugPrint('[KEY-CHECK] Private Key (first 8 chars): ${privateKey.substring(0, 8)}...');
-            debugPrint('[KEY-CHECK] Public Key being sent to /provision: $publicKey');
-          }(),
+      // Task A: Get or generate the WireGuard keypair
+      if (useRealTunnel) {
+        final kp = await _getOrCreateKeyPair();
+        privateKey = kp.$1;
+        publicKey = kp.$2;
+        debugPrint('[KEY-CHECK] Private Key (first 8 chars): ${privateKey.substring(0, 8)}...');
+        debugPrint('[KEY-CHECK] Public Key being sent to /provision: $publicKey');
+      }
 
-        // Task B: Revoke any stale configs for this server (fire-and-forget cleanup)
-        () async {
-          try {
-            final existingConfigs = await ApiService.getVpnConfigs();
-            List<dynamic> configs = [];
-            if (existingConfigs['success'] == true && existingConfigs['data'] != null) {
-              final data = existingConfigs['data'];
-              if (data is List) {
-                configs = data;
-              } else if (data is Map && data['configs'] is List) {
-                configs = data['configs'];
-              }
+      // Task B: Revoke any stale configs for this server (FIRE-AND-FORGET CLEANUP)
+      // Do NOT await this, let it run in the background so it doesn't block connecting!
+      () async {
+        try {
+          final existingConfigs = await ApiService.getVpnConfigs();
+          List<dynamic> configs = [];
+          if (existingConfigs['success'] == true && existingConfigs['data'] != null) {
+            final data = existingConfigs['data'];
+            if (data is List) {
+              configs = data;
+            } else if (data is Map && data['configs'] is List) {
+              configs = data['configs'];
             }
-            final staleConfigIds = configs
-                .where((cfg) => cfg['server_id']?.toString() == serverId && cfg['config_id'] != null)
-                .map((cfg) => cfg['config_id'].toString())
-                .toList();
-            if (staleConfigIds.isNotEmpty) {
-              await Future.wait(
-                staleConfigIds.map((cfgId) => ApiService.revokeVpnConfig(cfgId))
-              );
-            }
-          } catch (_) {}
-        }(),
-      ]);
+          }
+          final staleConfigIds = configs
+              .where((cfg) => cfg['server_id']?.toString() == serverId && cfg['config_id'] != null)
+              .map((cfg) => cfg['config_id'].toString())
+              .toList();
+          if (staleConfigIds.isNotEmpty) {
+            await Future.wait(
+              staleConfigIds.map((cfgId) => ApiService.revokeVpnConfig(cfgId))
+            );
+          }
+        } catch (_) {}
+      }();
 
       // 3. Provision — backend returns WireGuard .conf
       final provResponse = await ApiService.provisionVpn(
@@ -1169,42 +1242,29 @@ class VPNProvider with ChangeNotifier {
           // 5. Start the Native Tunnel
           // Retry loop: on Android, the first call may show the VPN permission dialog.
           // If the user grants it, the second call will succeed.
-          bool vpnStarted = false;
-          for (int attempt = 1; attempt <= 2 && !vpnStarted; attempt++) {
-            try {
-              await WireGuardFlutter.instance.startVpn(
-                serverAddress: serverAddressToPass,
-                wgQuickConfig: configToUse,
-                providerBundleIdentifier: 'com.atmosvpn.app.network-extension',
-              );
-              vpnStarted = true;
-            } on Exception catch (e) {
-              final msg = e.toString();
-              if (msg.contains('Permissions are not given') ||
-                  msg.contains('permission')) {
-                if (attempt == 1) {
-                  // The Android "Allow VPN" dialog was shown. Give the user
-                  // 5 seconds to approve it, then retry.
-                  // 5 seconds to approve it, then retry.
-                  _status = 'Awaiting Permission...';
-                  notifyListeners();
-                  await Future.delayed(const Duration(seconds: 5));
-                } else {
-                  // User denied the permission dialog.
-                  _status = 'Permission Denied';
-                  _lastError =
-                      'VPN permission is required. Please tap Connect and approve the VPN permission dialog when it appears.';
-                  _isConnected = false;
-                  notifyListeners();
-                }
-              } else {
-                _status = 'Disconnected';
-                _lastError = 'Failed to start VPN tunnel. Please try again.';
-                _isConnected = false;
-                notifyListeners();
-                break;
-              }
+          try {
+            final vpnStarted = await VpnService.connect(configToUse, serverName: 'AtmosVPN - $serverAddressToPass', killSwitch: _securityFeatures['kill_switch_enabled'] == true);
+            if (vpnStarted) {
+              _isConnected = false; // The poller will flip this to true when native confirms
+              _status = 'Connecting...';
+              _lastError = null;
+            } else {
+              _status = 'Connection Failed';
+              _lastError = 'VPN tunnel failed to start.';
+              _isConnected = false;
             }
+            notifyListeners();
+          } on Exception catch (e) {
+            final msg = e.toString();
+            if (msg.contains('permission') || msg.contains('denied')) {
+              _status = 'Permission Denied';
+              _lastError = 'VPN permission is required. Please tap Connect and approve the VPN permission dialog when it appears.';
+            } else {
+              _status = 'Disconnected';
+              _lastError = 'Failed to start VPN tunnel. Please try again.';
+            }
+            _isConnected = false;
+            notifyListeners();
           }
 
           final serverData = provData?['server'] as Map<String, dynamic>?;
@@ -1262,13 +1322,12 @@ class VPNProvider with ChangeNotifier {
     
     _status = 'Disconnecting...';
     notifyListeners();
-    // Run the heavy native IPC calls (stopVpn + API) off the main UI thread
-    // so they cannot block the UI and cause an ANR, especially during
-    // Activity transitions (e.g. after an interstitial ad closes).
+    // Run the native IPC calls off the main UI thread
+    // so they cannot block the UI and cause an ANR.
     await Future.microtask(() async {
       try {
-        if (!kIsWeb && _wgInitialized) {
-          await WireGuardFlutter.instance.stopVpn();
+        if (!kIsWeb) {
+          await VpnService.disconnect();
         }
         ApiService.disconnect(); // Fire-and-forget to drastically speed up reconnections
       } catch (_) {}
@@ -1284,12 +1343,12 @@ class VPNProvider with ChangeNotifier {
     if (_isConnected) {
       _userManuallyDisconnected = true;
       if (_isFreeUser) {
-        AdManager.showInterstitialAd(onAdDismissed: () {
-          // 1000ms gives Android time to fully tear down the AdActivity
-          // before we send native IPC commands to the WireGuard VPN service.
-          Future.delayed(const Duration(milliseconds: 1000), () {
-            disconnect();
-          });
+        // Disconnect instantly so the user isn't stuck waiting
+        disconnect();
+        
+        // Show ad shortly after initiating disconnect so the UI doesn't stutter
+        Future.delayed(const Duration(milliseconds: 150), () {
+          AdManager.showInterstitialAd(context: navigatorKey.currentContext);
         });
       } else {
         disconnect();
@@ -1313,10 +1372,12 @@ class VPNProvider with ChangeNotifier {
       final serverId = _selectedServer!['id']?.toString();
       if (serverId != null) {
         if (_isFreeUser) {
-          AdManager.showInterstitialAd(onAdDismissed: () {
-            Future.delayed(const Duration(milliseconds: 300), () {
-              connect(serverId);
-            });
+          // Connect instantly in the background!
+          connect(serverId);
+          
+          // Pop the ad over the UI while it is provisioning
+          Future.delayed(const Duration(milliseconds: 150), () {
+            AdManager.showInterstitialAd(context: navigatorKey.currentContext);
           });
         } else {
           connect(serverId);
@@ -1350,7 +1411,7 @@ class VPNProvider with ChangeNotifier {
 
   @override
   void dispose() {
-    _vpnStageSub?.cancel();
+    _vpnStatusPoller?.cancel();
     _sessionTimer?.cancel();
     _notifTimer?.cancel();
     _connectivitySub?.cancel();

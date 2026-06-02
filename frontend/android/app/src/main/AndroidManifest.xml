@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Core network permissions -->
     <uses-permission android:name="android.permission.INTERNET"/>
@@ -62,18 +63,18 @@
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="atmos_vpn_notifications" />
 
-        <!-- Set default FCM notification icon -->
+        <!-- Set default FCM notification icon (must be monochrome for Android 5+ status bar) -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_icon"
-            android:resource="@mipmap/ic_launcher" />
+            android:resource="@drawable/ic_notification" />
 
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
             android:value="ca-app-pub-4377728206732134~7527582947"/>
 
-        <!-- WireGuard VPN Service -->
+        <!-- Custom WireGuard VPN Service with Kill Switch -->
         <service
-            android:name="com.e.s.wireguard_flutter.WireGuardTunnelService"
+            android:name=".vpn.WireGuardVpnService"
             android:exported="true"
             android:foregroundServiceType="specialUse"
             android:permission="android.permission.BIND_VPN_SERVICE">
@@ -83,6 +84,19 @@
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="VPN tunnel service for Atmos VPN"/>
+        </service>
+
+        <!-- Native Kotlin FCM service — overrides the Flutter plugin's default
+             FlutterFirebaseMessagingService so we can handle killed-state
+             notifications natively without needing a Dart VM cold-start.
+             tools:node="replace" ensures only our service is registered. -->
+        <service
+            android:name=".AtmosVpnFirebaseService"
+            android:exported="false"
+            tools:node="replace">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
         </service>
     </application>
 

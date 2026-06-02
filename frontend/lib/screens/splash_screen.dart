@@ -36,7 +36,7 @@ class _SplashScreenState extends State<SplashScreen> {
 
   Future<void> _handleStartup() async {
     // 1. Minimum delay for branding
-    await Future.delayed(const Duration(seconds: 4));
+    await Future.delayed(const Duration(seconds: 2));
 
     // 2. Load configurations or check auth
     final prefs = await SharedPreferences.getInstance();
@@ -51,7 +51,7 @@ class _SplashScreenState extends State<SplashScreen> {
         if (!mounted) return;
         if (userData['success'] == true) {
           final plan =
-              userData['data']?['plan']?.toString().toLowerCase() ?? 'free';
+              userData['data']?['user']?['plan']?.toString().toLowerCase() ?? 'free';
           if (plan == 'free' && !kIsWeb) {
             AdManager.showAppOpenAdIfAvailable();
           }

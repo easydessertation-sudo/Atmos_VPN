@@ -49,17 +49,51 @@ class _AccountScreenState extends State<AccountScreen> {
   }
 
   Future<void> _handleLogout(BuildContext context) async {
-    try {
-      await ApiService.logout();
-    } catch (_) {}
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.cardBackground,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(24),
+          side: const BorderSide(color: AppColors.divider, width: 1),
+        ),
+        title: const Text('Log Out', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900)),
+        content: const Text(
+          'Are you sure you want to log out of your account?',
+          style: TextStyle(color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w700)),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(ctx); // Close dialog
+              
+              // Perform logout
+              try {
+                await ApiService.logout();
+              } catch (_) {}
 
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('access_token');
-    await prefs.remove('refresh_token');
-    await prefs.remove('auth_provider');
-    if (context.mounted) {
-      Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
-    }
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.remove('access_token');
+              await prefs.remove('refresh_token');
+              await prefs.remove('auth_provider');
+              if (context.mounted) {
+                Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.warning,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: const Text('Log Out', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showChangePasswordDialog(BuildContext context, Map<String, dynamic>? user) {
