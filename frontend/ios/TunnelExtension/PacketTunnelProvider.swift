@@ -25,7 +25,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         do {
             let tunnelConfig = try TunnelConfiguration(fromWgQuickConfig: wgConfigStr, called: "AtmosVPN")
             
-            let wgAdapter = WireGuardAdapter(with: self)
+            let wgAdapter = WireGuardAdapter(with: self, logHandler: { logLevel, message in
+                os_log("%{public}@", log: OSLog(subsystem: "com.vaavix.atmosvpn.tunnel", category: "WireGuard"), type: .default, message)
+            })
             self.adapter = wgAdapter
             
             wgAdapter.start(tunnelConfiguration: tunnelConfig) { [weak self] adapterError in
