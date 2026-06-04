@@ -30,7 +30,7 @@ workflows:
             --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER \
             --private-key "$APP_STORE_CONNECT_PRIVATE_KEY"
             
-          xcode-project use-profiles
+          xcode-project use-profiles --project ios/Runner.xcodeproj
       - name: Build IPA
         script: |
           flutter build ipa --release --export-options-plist=$HOME/export_options.plist
