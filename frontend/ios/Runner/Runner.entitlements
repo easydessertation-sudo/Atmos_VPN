@@ -21,16 +21,5 @@
         <string>$(AppIdentifierPrefix)com.vaavix.atmosvpn</string>
     </array>
     
-    <!-- Apple Sign-In - For future implementation -->
-    <key>com.apple.developer.applesignin</key>
-    <array>
-        <string>Default</string>
-    </array>
-    
-    <!-- Associated Domains - For deep linking (payment redirects, etc.) -->
-    <key>com.apple.developer.associated-domains</key>
-    <array>
-        <string>applinks:atmosvpn.com</string>
-    </array>
 </dict>
 </plist>
