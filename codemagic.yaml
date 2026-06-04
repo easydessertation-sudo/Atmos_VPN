@@ -17,33 +17,16 @@ workflows:
       - name: Fetch and configure profiles
         script: |
           app-store-connect fetch-signing-files "com.vaavix.atmosvpn" \
-            --type IOS_APP_DEVELOPMENT \
-            --create \
-            --issuer-id $APP_STORE_CONNECT_ISSUER_ID \
-            --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER \
-            --private-key "$APP_STORE_CONNECT_PRIVATE_KEY"
-            
-          app-store-connect fetch-signing-files "com.vaavix.atmosvpn.AtmosVPNTunnel" \
-            --type IOS_APP_DEVELOPMENT \
-            --create \
-            --issuer-id $APP_STORE_CONNECT_ISSUER_ID \
-            --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER \
-            --private-key "$APP_STORE_CONNECT_PRIVATE_KEY"
-            
-          app-store-connect fetch-signing-files "com.vaavix.atmosvpn" \
             --type IOS_APP_STORE \
-            --create \
-            --issuer-id $APP_STORE_CONNECT_ISSUER_ID \
-            --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER \
-            --private-key "$APP_STORE_CONNECT_PRIVATE_KEY"
-            
+            --create
+
           app-store-connect fetch-signing-files "com.vaavix.atmosvpn.AtmosVPNTunnel" \
             --type IOS_APP_STORE \
-            --create \
-            --issuer-id $APP_STORE_CONNECT_ISSUER_ID \
-            --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER \
-            --private-key "$APP_STORE_CONNECT_PRIVATE_KEY"
-            
+            --create
+
+          keychain initialize
+          keychain add-certificates
+
           xcode-project use-profiles --project ios/Runner.xcodeproj
       - name: Build IPA
         script: |
