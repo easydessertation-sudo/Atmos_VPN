@@ -4,6 +4,8 @@ workflows:
     working_directory: frontend
     max_build_duration: 60
     environment:
+      groups:
+        - appstore_credentials
       flutter: stable
       xcode: latest
       cocoapods: default
