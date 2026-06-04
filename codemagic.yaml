@@ -11,7 +11,9 @@ workflows:
       cocoapods: default
       ios_signing:
         distribution_type: app_store
-        bundle_identifier: com.vaavix.atmosvpn
+        bundle_identifier: 
+          - com.vaavix.atmosvpn
+          - com.vaavix.atmosvpn.AtmosVPNTunnel
     scripts:
       - name: Get packages
         script: flutter pub get
