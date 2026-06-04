@@ -9,45 +9,16 @@ workflows:
       flutter: stable
       xcode: latest
       cocoapods: default
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.vaavix.atmosvpn*
     scripts:
       - name: Get packages
         script: flutter pub get
       - name: Pod install
         script: cd ios && pod install
-      - name: Fetch and create signing profiles
-        script: |
-          app-store-connect fetch-signing-files "com.vaavix.atmosvpn" \
-            --type IOS_APP_DEVELOPMENT \
-            --create \
-            --issuer-id $APP_STORE_CONNECT_ISSUER_ID \
-            --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER \
-            --private-key "$APP_STORE_CONNECT_PRIVATE_KEY"
-            
-          app-store-connect fetch-signing-files "com.vaavix.atmosvpn.AtmosVPNTunnel" \
-            --type IOS_APP_DEVELOPMENT \
-            --create \
-            --issuer-id $APP_STORE_CONNECT_ISSUER_ID \
-            --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER \
-            --private-key "$APP_STORE_CONNECT_PRIVATE_KEY"
-            
-          app-store-connect fetch-signing-files "com.vaavix.atmosvpn" \
-            --type IOS_APP_STORE \
-            --create \
-            --issuer-id $APP_STORE_CONNECT_ISSUER_ID \
-            --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER \
-            --private-key "$APP_STORE_CONNECT_PRIVATE_KEY"
-          
-          app-store-connect fetch-signing-files "com.vaavix.atmosvpn.AtmosVPNTunnel" \
-            --type IOS_APP_STORE \
-            --create \
-            --issuer-id $APP_STORE_CONNECT_ISSUER_ID \
-            --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER \
-            --private-key "$APP_STORE_CONNECT_PRIVATE_KEY"
-            
-          xcode-project use-profiles --project ios/Runner.xcodeproj
       - name: Build IPA
-        script: |
-          flutter build ipa --release --export-options-plist=$HOME/export_options.plist
+        script: flutter build ipa --release
     artifacts:
       - frontend/build/ios/ipa/*.ipa
     publishing:
