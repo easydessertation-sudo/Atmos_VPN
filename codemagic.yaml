@@ -9,9 +9,6 @@ workflows:
       flutter: stable
       xcode: latest
       cocoapods: default
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: com.vaavix.atmosvpn
     scripts:
       - name: Get packages
         script: flutter pub get
@@ -22,15 +19,24 @@ workflows:
       - name: Create certificate and profiles
         script: |
           app-store-connect create-certificate \
-            --type IOS_DISTRIBUTION
+            --type IOS_DISTRIBUTION \
+            --issuer-id $APP_STORE_CONNECT_ISSUER_ID \
+            --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER \
+            --private-key "$APP_STORE_CONNECT_PRIVATE_KEY"
 
           app-store-connect fetch-signing-files "com.vaavix.atmosvpn" \
             --type IOS_APP_STORE \
-            --create
+            --create \
+            --issuer-id $APP_STORE_CONNECT_ISSUER_ID \
+            --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER \
+            --private-key "$APP_STORE_CONNECT_PRIVATE_KEY"
 
           app-store-connect fetch-signing-files "com.vaavix.atmosvpn.AtmosVPNTunnel" \
             --type IOS_APP_STORE \
-            --create
+            --create \
+            --issuer-id $APP_STORE_CONNECT_ISSUER_ID \
+            --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER \
+            --private-key "$APP_STORE_CONNECT_PRIVATE_KEY"
 
           keychain initialize
           keychain add-certificates
