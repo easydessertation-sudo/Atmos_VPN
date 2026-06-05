@@ -19,8 +19,22 @@ workflows:
       - name: Pod install
         script: cd ios && pod install
 
-      - name: Set up keychain
-        script: keychain initialize
+      - name: Create certificate and profiles
+        script: |
+          app-store-connect create-certificate \
+            --type IOS_DISTRIBUTION
+
+          app-store-connect fetch-signing-files "com.vaavix.atmosvpn" \
+            --type IOS_APP_STORE \
+            --create
+
+          app-store-connect fetch-signing-files "com.vaavix.atmosvpn.AtmosVPNTunnel" \
+            --type IOS_APP_STORE \
+            --create
+
+          keychain initialize
+          keychain add-certificates
+          xcode-project use-profiles --project ios/Runner.xcodeproj
 
       - name: Build IPA
         script: |
