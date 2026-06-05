@@ -18,11 +18,7 @@ workflows:
 
       - name: Create certificate and profiles
         script: |
-          app-store-connect create-certificate \
-            --type IOS_DISTRIBUTION \
-            --issuer-id $APP_STORE_CONNECT_ISSUER_ID \
-            --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER \
-            --private-key "$APP_STORE_CONNECT_PRIVATE_KEY"
+          keychain initialize
 
           app-store-connect fetch-signing-files "com.vaavix.atmosvpn" \
             --type IOS_APP_STORE \
@@ -38,7 +34,6 @@ workflows:
             --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER \
             --private-key "$APP_STORE_CONNECT_PRIVATE_KEY"
 
-          keychain initialize
           keychain add-certificates
           xcode-project use-profiles --project ios/Runner.xcodeproj
 
