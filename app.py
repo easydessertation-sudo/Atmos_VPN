@@ -2158,11 +2158,11 @@ def watch_ad(req: WatchAdRequest, user: User = Depends(get_current_user), db: Se
         key = f"user:{user.id}:starter_ads"
         
         # Track ads watched in redis (expires in 24 hours if they abandon it)
-        count = rc.incr(key) if rc else 2
+        count = rc.incr(key) if rc else 3
         if rc and count == 1:
             rc.expire(key, 86400)
             
-        if count >= 2:
+        if count >= 3:
             if rc:
                 rc.delete(key) # reset for next time
             user.vpn_expiration_time = now + timedelta(minutes=45)
@@ -2171,15 +2171,16 @@ def watch_ad(req: WatchAdRequest, user: User = Depends(get_current_user), db: Se
                 "reward_minutes": 45,
                 "remaining_seconds": 2700,
                 "ads_watched": count,
-                "ads_required": 2
+                "ads_required": 3
             }, msg="45 minutes starter VPN credited!")
         else:
+            remaining_ads = 3 - count
             return success({
                 "reward_minutes": 0,
                 "remaining_seconds": 0,
                 "ads_watched": count,
-                "ads_required": 2
-            }, msg="Watch 1 more ad to get 45 minutes!")
+                "ads_required": 3
+            }, msg=f"Watch {remaining_ads} more ad{'s' if remaining_ads > 1 else ''} to get 45 minutes!")
             
     else:
         # Default Free Tier Logic: 1 ad = 30 minutes, resets instantly (does not accumulate indefinitely)
