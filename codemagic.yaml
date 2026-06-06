@@ -8,9 +8,7 @@ workflows:
         - appstore_credentials
       ios_signing:
         distribution_type: app_store
-        bundle_identifier:
-          - com.vaavix.atmosvpn
-          - com.vaavix.atmosvpn.AtmosVPNTunnel
+        bundle_identifier: com.vaavix.atmosvpn
       flutter: stable
       xcode: latest
       cocoapods: default
