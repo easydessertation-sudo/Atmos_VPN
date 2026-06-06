@@ -2,24 +2,13 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- VPN Capability - CRITICAL for WireGuard -->
-    <key>com.apple.developer.networking.networkextension</key>
-    <array>
-        <string>personal-vpn</string>
-        <string>packet-tunnel-provider</string>
-    </array>
-    
-    <!-- App Groups - Required for VPN communication between main app and tunnel -->
-    <key>com.apple.security.application-groups</key>
-    <array>
-        <string>group.com.vaavix.atmosvpn</string>
-    </array>
-    
-    <!-- Keychain Sharing - For storing WireGuard keys securely -->
-    <key>keychain-access-groups</key>
-    <array>
-        <string>$(AppIdentifierPrefix)com.vaavix.atmosvpn</string>
-    </array>
-    
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.com.vaavix.atmosvpn</string>
+	</array>
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)com.vaavix.atmosvpn</string>
+	</array>
 </dict>
 </plist>
