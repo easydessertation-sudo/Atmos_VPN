@@ -33,7 +33,7 @@ workflows:
             --scheme Runner
 
     artifacts:
-      - frontend/build/ios/ipa/*.ipa
+      - build/ios/ipa/*.ipa
 
     publishing:
       app_store_connect:
