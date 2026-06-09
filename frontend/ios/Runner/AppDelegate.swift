@@ -10,13 +10,8 @@ import NetworkExtension
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
     ) -> Bool {
 
-        // Get the Flutter view controller
-        let controller: FlutterViewController
-        if let windowVC = window?.rootViewController as? FlutterViewController {
-            controller = windowVC
-        } else {
-            // Fallback for newer Flutter versions using SceneDelegate
-            controller = FlutterViewController(engine: FlutterEngine(name: "io.flutter"), nibName: nil, bundle: nil)
+        guard let controller = window?.rootViewController as? FlutterViewController else {
+            fatalError("rootViewController is not type FlutterViewController")
         }
 
         // VPN MethodChannel — must match the Dart and Android channel name exactly
