@@ -115,7 +115,6 @@
 	<string>AtmosVPN needs network access to establish secure VPN connections and protect your privacy</string>
 	<key>UIBackgroundModes</key>
 	<array>
-		<string>network-authentication</string>
 		<string>remote-notification</string>
 	</array>
 	<key>NSUserTrackingUsageDescription</key>
