@@ -1,7 +1,7 @@
 name: AtmosVPN
 description: A new Flutter project for AtmosVPN.
 publish_to: 'none'
-version: 1.0.8+16
+version: 1.0.10+18
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -31,6 +31,7 @@ dependencies:
   sign_in_with_apple: ^8.0.0
   package_info_plus: ^10.1.0
   upgrader: ^13.4.0
+  in_app_review: ^2.0.12
 
 dev_dependencies:
   flutter_test:
