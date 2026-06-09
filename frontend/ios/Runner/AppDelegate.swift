@@ -72,7 +72,7 @@ import NetworkExtension
         result: @escaping FlutterResult
     ) {
         let proto = NETunnelProviderProtocol()
-        proto.providerBundleIdentifier = "com.vaavix.atmosvpn.tunnel"
+        proto.providerBundleIdentifier = "com.vaavix.atmosvpn.AtmosVPNTunnel"
         proto.serverAddress = "AtmosVPN"
         proto.providerConfiguration = ["wgConfig": config]
 
