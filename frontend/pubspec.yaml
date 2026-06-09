@@ -18,6 +18,8 @@ dependencies:
   shared_preferences: ^2.2.2
   font_awesome_flutter: ^11.0.0
   url_launcher: ^6.3.2
+  wireguard_flutter:
+    path: ./packages/wireguard_flutter
   cryptography: ^2.7.0
   google_mobile_ads: ^8.0.0
   connectivity_plus: ^7.1.1
