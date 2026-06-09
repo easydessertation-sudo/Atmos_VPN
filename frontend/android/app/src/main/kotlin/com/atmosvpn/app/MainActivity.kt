@@ -85,7 +85,20 @@ class MainActivity : FlutterActivity() {
                         disconnectVpn(result)
                     }
                     "isConnected" -> {
-                        result.success(WireGuardVpnService.isRunning)
+                        var isVpnUp = false
+                        try {
+                            val stateFile = java.io.File(filesDir, "vpn_state.txt")
+                            if (stateFile.exists()) {
+                                isVpnUp = stateFile.readText().trim() == "true"
+                            }
+                        } catch (e: Exception) {}
+                        
+                        // Fallback static variable check (only works if in same process, but harmless)
+                        if (!isVpnUp) {
+                            isVpnUp = WireGuardVpnService.isRunning
+                        }
+                        
+                        result.success(isVpnUp)
                     }
                     "getError" -> {
                         result.success(WireGuardVpnService.lastError)

@@ -28,7 +28,28 @@ class WireGuardVpnService : VpnService() {
         const val CHANNEL_ID = "atmos_vpn_service"
 
         @Volatile
-        var isRunning = false
+        private var _isRunning = false
+
+        var isRunning: Boolean
+            get() {
+                if (_isRunning) return true
+                try {
+                    val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
+                    if (interfaces != null) {
+                        for (intf in interfaces) {
+                            if ((intf.name.startsWith("tun") || intf.name.startsWith("wg")) && intf.isUp) {
+                                return true
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    // Ignore
+                }
+                return false
+            }
+            set(value) {
+                _isRunning = value
+            }
 
         @Volatile
         var lastError: String? = null
@@ -76,6 +97,8 @@ class WireGuardVpnService : VpnService() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val prefs = getSharedPreferences("vpn_prefs", android.content.Context.MODE_PRIVATE)
+        
         when (intent?.action) {
             ACTION_START -> {
                 Log.i(TAG, "ACTION_START received")
@@ -88,14 +111,23 @@ class WireGuardVpnService : VpnService() {
                     stopSelf()
                     return START_NOT_STICKY
                 }
+                
+                prefs.edit()
+                    .putString("last_config", configString)
+                    .putString("last_server_name", currentServerName)
+                    .apply()
+                    
                 startVpn(configString)
             }
             ACTION_STOP -> {
                 Log.i(TAG, "ACTION_STOP received")
+                prefs.edit().clear().apply()
                 stopVpn()
             }
             else -> {
-                Log.w(TAG, "Unknown action: ${intent?.action}")
+                Log.w(TAG, "Unknown action or null intent (service restarted by OS). Stopping to prevent zombie tunnel.")
+                stopSelf()
+                return START_NOT_STICKY
             }
         }
         return START_STICKY
@@ -115,6 +147,10 @@ class WireGuardVpnService : VpnService() {
                     override fun onStateChange(newState: Tunnel.State) {
                         Log.i(TAG, "Tunnel state changed: $newState")
                         isRunning = newState == Tunnel.State.UP
+                        try {
+                            java.io.File(applicationContext.filesDir, "vpn_state.txt").writeText(if (isRunning) "true" else "false")
+                        } catch (e: Exception) {}
+                        
                         if (isRunning) {
                             lastError = null
                             lastRx = 0L
@@ -187,6 +223,9 @@ class WireGuardVpnService : VpnService() {
             Log.e(TAG, "Error stopping VPN: ${e.message}", e)
         } finally {
             isRunning = false
+            try {
+                java.io.File(applicationContext.filesDir, "vpn_state.txt").writeText("false")
+            } catch (e: Exception) {}
             activeTunnel = null
             stopForeground(true)
             stopSelf()

@@ -16,6 +16,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:in_app_review/in_app_review.dart';
 import 'utils/design_system.dart';
 import 'utils/api_service.dart';
 import 'utils/ad_manager.dart';
@@ -173,8 +174,8 @@ class _AtmosVPNAppState extends State<AtmosVPNApp> with WidgetsBindingObserver {
       theme: AppDesign.darkTheme,
       initialRoute: '/',
       routes: {
-        '/': (context) => _UpgradeWrapper(child: kIsWeb ? const WebLandingPage() : const SplashScreen()),
-        '/splash': (context) => _UpgradeWrapper(child: const SplashScreen()),
+        '/': (context) => kIsWeb ? const WebLandingPage() : const SplashScreen(),
+        '/splash': (context) => const SplashScreen(),
         '/trial': (context) => const TrialOfferScreen(),
         // ── Web Marketing ──────────────────────────────────────────
         '/features': (context) => const FeaturesPage(),
@@ -259,6 +260,7 @@ class _UpgradeWrapper extends StatelessWidget {
     return UpgradeAlert(
       upgrader: Upgrader(
         messages: _UpgraderMessages(),
+        durationUntilAlertAgain: const Duration(seconds: 0), // Force it to show again even if route replaces
       ),
       showIgnore: true,         // We changed 'Ignore' to 'Cancel' via _UpgraderMessages
       showLater: false,         // Hide 'Later' button
@@ -394,9 +396,13 @@ class VPNProvider with ChangeNotifier {
       final response = await ApiService.getSessionTime();
       if (response['success'] == true) {
         _remainingSeconds = response['data']['remaining_seconds'] ?? 0;
+        // Cache the real value for next reopen
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setInt('cached_remaining_seconds', _remainingSeconds);
+        await prefs.setInt('cached_timestamp', DateTime.now().millisecondsSinceEpoch);
       }
     } catch (_) {
-      // On network failure keep 0 — safer than showing wrong time
+      // On network failure, keep the cached value already shown
     } finally {
       _isSessionTimeLoaded = true;
       notifyListeners();
@@ -406,12 +412,25 @@ class VPNProvider with ChangeNotifier {
   VPNProvider() {
     _init();
     _sessionTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      // IMPORTANT: Do NOT tick down until we've loaded the real session time
+      // from the server. Without this guard, the timer fires with _remainingSeconds=0
+      // on every app reopen, immediately calling _handleSessionExpiry() and
+      // disconnecting the VPN before the API has a chance to respond.
+      if (!_isSessionTimeLoaded) return;
+      
       if (_isConnected && _isFreeUser) {
         final reqPlan =
             _selectedServer?['required_plan']?.toString().toLowerCase() ??
                 'free';
         if (_remainingSeconds > 0) {
           _remainingSeconds--;
+          // Keep the cache reasonably fresh so a force-kill doesn't lose too much time
+          if (_remainingSeconds % 5 == 0) {
+            SharedPreferences.getInstance().then((prefs) {
+              prefs.setInt('cached_remaining_seconds', _remainingSeconds);
+              prefs.setInt('cached_timestamp', DateTime.now().millisecondsSinceEpoch);
+            });
+          }
           notifyListeners();
         } else {
           _handleSessionExpiry();
@@ -430,6 +449,22 @@ class VPNProvider with ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     final savedIds = prefs.getStringList('notified_ids') ?? [];
     _notifiedIds.addAll(savedIds);
+
+    // ── Instant session time restore ──────────────────────────────────────────
+    // Calculate exact real time passed since app was closed, so there is ZERO delay.
+    final cachedSeconds = prefs.getInt('cached_remaining_seconds');
+    final cachedTimestamp = prefs.getInt('cached_timestamp');
+    if (cachedSeconds != null && cachedSeconds > 0) {
+      if (cachedTimestamp != null) {
+        final elapsedSeconds = (DateTime.now().millisecondsSinceEpoch - cachedTimestamp) ~/ 1000;
+        final calculated = cachedSeconds - elapsedSeconds;
+        _remainingSeconds = calculated > 0 ? calculated : 0;
+      } else {
+        _remainingSeconds = cachedSeconds;
+      }
+      _isSessionTimeLoaded = true; // Let the timer tick immediately!
+      notifyListeners();
+    }
     
     // Run network requests simultaneously to drastically speed up startup time
     await Future.wait([
@@ -445,6 +480,9 @@ class VPNProvider with ChangeNotifier {
       fetchNotifications(), // Instantly check for new notifications on launch
     ]);
     
+    // Remove the previous _servers.firstWhere wait block, 
+    // because we now INSTANTLY restore the JSON in checkConnectionStatus()
+
     if (_selectedServer == null && _servers.isNotEmpty) {
       final random = math.Random();
       if (_isFreeUser) {
@@ -913,6 +951,54 @@ class VPNProvider with ChangeNotifier {
 
   Future<void> checkConnectionStatus() async {
     try {
+      // IMPORTANT: Check native tunnel FIRST.
+      // If the native WireGuard tunnel is still UP (survived a swipe/kill),
+      // we must trust it, even if the backend API says "disconnected".
+      bool nativeUp = false;
+      try {
+        nativeUp = await VpnService.isConnected();
+      } catch (_) {}
+
+      final prefs = await SharedPreferences.getInstance();
+      final savedServerId = prefs.getString('last_connected_server_id');
+      final savedConfig = prefs.getString('last_vpn_config');
+      final savedServerName = prefs.getString('last_connected_server_name');
+
+      if (nativeUp) {
+        if (!_isConnected) {
+          _isConnected = true;
+          _status = 'Connected';
+          _lastError = null;
+          
+          if (savedServerName != null) {
+            _currentServer = savedServerName;
+          }
+          final savedServerJson = prefs.getString('last_connected_server_json');
+          if (savedServerJson != null) {
+            try {
+              _selectedServer = jsonDecode(savedServerJson) as Map<String, dynamic>;
+            } catch (_) {}
+          } else if (savedServerId != null && _servers.isNotEmpty) {
+            _selectedServer = _servers.firstWhere(
+              (s) => s['id']?.toString() == savedServerId,
+              orElse: () => _selectedServer,
+            );
+          }
+          
+          notifyListeners();
+        }
+        return; // Tunnel is alive — do not ask backend.
+      }
+
+      // Native tunnel is down. Check if we have a saved session to restore.
+      if (savedServerId != null && savedConfig != null) {
+        // We were connected before — silently reconnect without going through Provisioning.
+        debugPrint('[VPN] App reopened with saved session. Silently reconnecting...');
+        _silentReconnect(savedConfig, savedServerId, savedServerName ?? '');
+        return;
+      }
+
+      // No saved session — check backend for any active sessions from other devices.
       final response = await ApiService.getStatus();
       if (response['success'] == true &&
           response['data']['connected'] == true) {
@@ -933,9 +1019,34 @@ class VPNProvider with ChangeNotifier {
     } catch (_) {}
   }
 
+  /// Silently re-establishes the WireGuard tunnel using a saved config,
+  /// without going through the full Provisioning flow or showing ads.
+  Future<void> _silentReconnect(String config, String serverId, String serverName) async {
+    if (_isConnected || _status == 'Connecting...') return;
+    _status = 'Connecting...';
+    _connectingTicks = 0;
+    _lastError = null;
+    notifyListeners();
+    try {
+      await VpnService.connect(config, serverName: 'AtmosVPN - $serverName');
+    } catch (e) {
+      debugPrint('[VPN] Silent reconnect failed: $e');
+      _status = 'Disconnected';
+      _isConnected = false;
+      // Clear saved session so we don't retry forever on a bad config.
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('last_connected_server_id');
+      await prefs.remove('last_vpn_config');
+      await prefs.remove('last_connected_server_name');
+      notifyListeners();
+    }
+  }
+
   Future<void> _handleSessionExpiry() async {
-    await disconnect();
+    await disconnect(); // disconnect() already clears cached_remaining_seconds via prefs.remove
     _remainingSeconds = 0;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('cached_remaining_seconds');
     triggerSessionExpiredDialog();
   }
 
@@ -953,6 +1064,10 @@ class VPNProvider with ChangeNotifier {
             // Check if we hit the required number of ads
             if (data.containsKey('reward_minutes') && data['reward_minutes'] > 0) {
               _remainingSeconds = (data['reward_minutes'] as num).toInt() * 60;
+              SharedPreferences.getInstance().then((prefs) {
+                prefs.setInt('cached_remaining_seconds', _remainingSeconds);
+                prefs.setInt('cached_timestamp', DateTime.now().millisecondsSinceEpoch);
+              });
               _starterAdsWatched = 0; // Reset upon successful claim
               notifyListeners();
               return true; // Reward claimed!
@@ -960,6 +1075,10 @@ class VPNProvider with ChangeNotifier {
             
             if (data.containsKey('remaining_seconds') && data['remaining_seconds'] > 0) {
               _remainingSeconds = (data['remaining_seconds'] as num).toInt();
+              SharedPreferences.getInstance().then((prefs) {
+                prefs.setInt('cached_remaining_seconds', _remainingSeconds);
+                prefs.setInt('cached_timestamp', DateTime.now().millisecondsSinceEpoch);
+              });
               _starterAdsWatched = 0;
               notifyListeners();
               return true;
@@ -969,6 +1088,10 @@ class VPNProvider with ChangeNotifier {
           } else {
             // Free tier instantly grants time
             _remainingSeconds = (data['remaining_seconds'] as num?)?.toInt() ?? (30 * 60);
+            SharedPreferences.getInstance().then((prefs) {
+              prefs.setInt('cached_remaining_seconds', _remainingSeconds);
+              prefs.setInt('cached_timestamp', DateTime.now().millisecondsSinceEpoch);
+            });
             notifyListeners();
             return true; // Reward claimed!
           }
@@ -1248,6 +1371,14 @@ class VPNProvider with ChangeNotifier {
               _isConnected = false; // The poller will flip this to true when native confirms
               _status = 'Connecting...';
               _lastError = null;
+              // Save session for silent reconnect after app is killed & reopened
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setString('last_vpn_config', configToUse);
+              await prefs.setString('last_connected_server_id', serverId);
+              await prefs.setString('last_connected_server_name', serverAddressToPass);
+              if (_selectedServer != null) {
+                await prefs.setString('last_connected_server_json', jsonEncode(_selectedServer));
+              }
             } else {
               _status = 'Connection Failed';
               _lastError = 'VPN tunnel failed to start.';
@@ -1332,11 +1463,149 @@ class VPNProvider with ChangeNotifier {
         ApiService.disconnect(); // Fire-and-forget to drastically speed up reconnections
       } catch (_) {}
     });
+    // Clear the saved session so silent reconnect doesn't fire after a manual disconnect
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('last_vpn_config');
+      await prefs.remove('last_connected_server_id');
+      await prefs.remove('last_connected_server_name');
+      await prefs.remove('last_connected_server_json');
+      await prefs.remove('last_connected_server_json');
+      await prefs.remove('cached_remaining_seconds');
+    } catch (_) {}
     _isConnected = false;
     _status = 'Disconnected';
     _currentServer = 'None';
     _remainingSeconds = 0; // NEW RULE: Use it or lose it
     notifyListeners();
+  }
+
+  Future<void> checkAndRequestReview() async {
+    if (kIsWeb) return;
+    try {
+      debugPrint('[REVIEW] Checking review status...');
+      final prefs = await SharedPreferences.getInstance();
+      final lastPromptStr = prefs.getString('last_review_prompt_date');
+      final now = DateTime.now();
+
+      bool shouldPrompt = false;
+      if (lastPromptStr == null) {
+        shouldPrompt = true; // First time
+      } else {
+        final lastPromptDate = DateTime.parse(lastPromptStr);
+        if (now.difference(lastPromptDate).inDays >= 5) {
+          shouldPrompt = true; // 5 days passed
+        }
+      }
+
+      if (shouldPrompt) {
+        debugPrint('[REVIEW] shouldPrompt is true. Checking isAvailable...');
+        final InAppReview inAppReview = InAppReview.instance;
+        final isAvailable = await inAppReview.isAvailable();
+        debugPrint('[REVIEW] isAvailable: $isAvailable');
+        
+        if (isAvailable) {
+          debugPrint('[REVIEW] Requesting review from native API...');
+          final context = navigatorKey.currentContext;
+          if (context != null && context.mounted) {
+            showDialog(
+              context: context,
+              builder: (context) {
+                final isIOS = Theme.of(context).platform == TargetPlatform.iOS;
+                final storeName = isIOS ? 'App Store' : 'Play Store';
+                
+                return Dialog(
+                  backgroundColor: AppColors.cardBackground,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 32.0),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // "Rate Us" bubble
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+                          ),
+                          child: const Text('Rate Us', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                        ),
+                        const SizedBox(height: 16),
+                        // 5 Stars
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: List.generate(5, (index) => const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 4.0),
+                            child: Icon(Icons.star_rounded, color: Colors.orange, size: 36),
+                          )),
+                        ),
+                        const SizedBox(height: 24),
+                        // Title
+                        const Text(
+                          'Enjoying AtmosVPN?',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        // Subtitle
+                        Text(
+                          'Rate us on the $storeName and show your support!',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 14,
+                            height: 1.5,
+                          ),
+                        ),
+                        const SizedBox(height: 32),
+                        // Primary Button
+                        SizedBox(
+                          width: double.infinity,
+                          height: 54,
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primaryBlue,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                              elevation: 0,
+                            ),
+                            onPressed: () {
+                              Navigator.pop(context);
+                              inAppReview.openStoreListing();
+                            },
+                            child: Text('Rate on $storeName', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        // Secondary Button
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          style: TextButton.styleFrom(
+                            foregroundColor: AppColors.textSecondary,
+                            splashFactory: NoSplash.splashFactory,
+                          ),
+                          child: const Text('Maybe later', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            );
+          }
+          await prefs.setString('last_review_prompt_date', now.toIso8601String());
+        } else {
+          debugPrint('[REVIEW] InAppReview is NOT available on this device (No Play Store / unsupported).');
+        }
+      }
+    } catch (e) {
+      debugPrint('[REVIEW] checkAndRequestReview exception: $e');
+    }
   }
 
   void toggleConnection() {
@@ -1346,12 +1615,18 @@ class VPNProvider with ChangeNotifier {
         // Disconnect instantly so the user isn't stuck waiting
         disconnect();
         
+        // Show review dialog BEFORE the ad so it's waiting underneath
+        checkAndRequestReview();
+        
         // Show ad shortly after initiating disconnect so the UI doesn't stutter
         Future.delayed(const Duration(milliseconds: 150), () {
-          AdManager.showInterstitialAd(context: navigatorKey.currentContext);
+          AdManager.showInterstitialAd(
+            context: navigatorKey.currentContext,
+          );
         });
       } else {
         disconnect();
+        checkAndRequestReview();
       }
     } else {
       final reqPlan =

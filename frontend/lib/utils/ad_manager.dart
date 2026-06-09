@@ -71,9 +71,11 @@ class AdManager {
   }
 
   static DateTime? _lastInterstitialDismissedAt;
+  static bool _isShowingInterstitialAd = false;
 
   static void showAppOpenAdIfAvailable() {
     if (kIsWeb) return;
+    if (_isShowingInterstitialAd) return;
     if (_lastInterstitialDismissedAt != null && 
         DateTime.now().difference(_lastInterstitialDismissedAt!).inSeconds < 5) {
       return;
@@ -139,8 +141,10 @@ class AdManager {
     }
 
     void _doShow() {
+      _isShowingInterstitialAd = true;
       _interstitialAd!.fullScreenContentCallback = FullScreenContentCallback(
         onAdDismissedFullScreenContent: (ad) {
+          _isShowingInterstitialAd = false;
           _lastInterstitialDismissedAt = DateTime.now();
           ad.dispose();
           _isInterstitialAdLoaded = false;
@@ -149,6 +153,7 @@ class AdManager {
           if (onAdDismissed != null) onAdDismissed();
         },
         onAdFailedToShowFullScreenContent: (ad, error) {
+          _isShowingInterstitialAd = false;
           _lastInterstitialDismissedAt = DateTime.now();
           ad.dispose();
           _isInterstitialAdLoaded = false;

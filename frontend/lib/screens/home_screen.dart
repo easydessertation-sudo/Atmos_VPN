@@ -102,7 +102,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final isStarterServer = reqPlan == 'starter';
     final tier = isStarterServer ? 'starter' : 'free';
     
-    final int adsNeeded = isStarterServer ? 2 : 1;
+    final int adsNeeded = isStarterServer ? 3 : 1;
     final int adsWatched = isStarterServer ? vpn.starterAdsWatched : 0;
     final int adsRemaining = adsNeeded - adsWatched;
     
@@ -125,33 +125,55 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           TextButton(
             onPressed: () {
               Navigator.pop(ctx);
-              AdManager.showInterstitialAd(context: context, onAdDismissed: () {
-                if (isStarterServer && vpn.starterAdsWatched == 0) {
-                  // Intermediate ad: Optimistically show next dialog INSTANTLY
-                  vpn.optimisticallyIncrementStarterAds();
-                  vpn.triggerSessionExpiredDialog();
-                  
-                  // Fire-and-forget the backend request silently
-                  vpn.watchAd(tier: tier).then((claimed) {
-                    if (claimed && vpn.selectedServer != null) {
-                      vpn.connect(vpn.selectedServer!['id']!.toString(), mode: 'standard');
-                    }
-                  });
-                } else {
-                  // Final ad: Show a quick loading spinner while claiming final reward
+              void playNext(int currentAd) {
+                if (!context.mounted) return;
+                
+                if (adsNeeded > 1) {
                   showDialog(
                     context: context,
                     barrierDismissible: false,
-                    builder: (ctx) => const Center(child: CircularProgressIndicator(color: AppColors.primaryBlue)),
+                    builder: (dialogCtx) => AlertDialog(
+                      backgroundColor: AppColors.cardBackground,
+                      content: Row(
+                        children: [
+                          const CircularProgressIndicator(color: AppColors.primaryBlue),
+                          const SizedBox(width: 20),
+                          Text('Loading Ad ${currentAd + 1} of $adsNeeded...', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                        ],
+                      ),
+                    ),
                   );
-                  vpn.watchAd(tier: tier).then((claimed) {
-                    if (context.mounted) Navigator.pop(context); // pop loading dialog
-                    if (claimed && vpn.selectedServer != null) {
-                      vpn.connect(vpn.selectedServer!['id']!.toString(), mode: 'standard');
-                    }
-                  });
                 }
-              });
+
+                Future.delayed(Duration(milliseconds: adsNeeded > 1 ? 1000 : 0), () {
+                  if (context.mounted && adsNeeded > 1) Navigator.pop(context);
+                  
+                  AdManager.showInterstitialAd(
+                    context: context,
+                    onAdDismissed: () async {
+                      showDialog(
+                        context: context,
+                        barrierDismissible: false,
+                        builder: (dialogCtx) => const Center(child: CircularProgressIndicator(color: AppColors.primaryBlue)),
+                      );
+                      
+                      bool claimed = await vpn.watchAd(tier: tier);
+                      
+                      if (context.mounted) Navigator.pop(context); // close loader
+                      
+                      if (claimed) {
+                        if (vpn.selectedServer != null) {
+                          vpn.connect(vpn.selectedServer!['id']!.toString(), mode: 'standard');
+                        }
+                      } else if (isStarterServer && vpn.starterAdsWatched < adsNeeded) {
+                        playNext(vpn.starterAdsWatched);
+                      }
+                    }
+                  );
+                });
+              }
+              
+              playNext(vpn.starterAdsWatched);
             },
             child: Text(buttonText,
                 style: const TextStyle(
@@ -368,7 +390,7 @@ class _HomeTab extends StatelessWidget {
                             final isStarterServer = reqPlan == 'starter';
                             final tier = isStarterServer ? 'starter' : 'free';
                             
-                            final int adsNeeded = isStarterServer ? 2 : 1;
+                            final int adsNeeded = isStarterServer ? 3 : 1;
                             final int adsWatched = isStarterServer ? vpn.starterAdsWatched : 0;
                             final int adsRemaining = adsNeeded - adsWatched;
                             
@@ -385,31 +407,55 @@ class _HomeTab extends StatelessWidget {
                               onUpgrade: () =>
                                   Navigator.pushNamed(context, '/account/pricing'),
                               onWatchAd: () {
-                                AdManager.showInterstitialAd(context: context, onAdDismissed: () {
-                                  if (isStarterServer && vpn.starterAdsWatched == 0) {
-                                    vpn.optimisticallyIncrementStarterAds();
-                                    vpn.triggerSessionExpiredDialog();
-                                    
-                                    vpn.watchAd(tier: tier).then((claimed) {
-                                      if (claimed && vpn.selectedServer != null) {
-                                        vpn.connect(vpn.selectedServer!['id']!.toString(), mode: 'standard');
-                                      }
-                                    });
-                                  } else {
+                                void playNext(int currentAd) {
+                                  if (!context.mounted) return;
+                                  
+                                  if (adsNeeded > 1) {
                                     showDialog(
                                       context: context,
                                       barrierDismissible: false,
-                                      builder: (ctx) => const Center(child: CircularProgressIndicator(color: AppColors.primaryBlue)),
+                                      builder: (dialogCtx) => AlertDialog(
+                                        backgroundColor: AppColors.cardBackground,
+                                        content: Row(
+                                          children: [
+                                            const CircularProgressIndicator(color: AppColors.primaryBlue),
+                                            const SizedBox(width: 20),
+                                            Text('Loading Ad ${currentAd + 1} of $adsNeeded...', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                                          ],
+                                        ),
+                                      ),
                                     );
-
-                                    vpn.watchAd(tier: tier).then((claimed) {
-                                      if (context.mounted) Navigator.pop(context);
-                                      if (claimed && vpn.selectedServer != null) {
-                                        vpn.connect(vpn.selectedServer!['id']!.toString(), mode: 'standard');
-                                      }
-                                    });
                                   }
-                                });
+
+                                  Future.delayed(Duration(milliseconds: adsNeeded > 1 ? 1000 : 0), () {
+                                    if (context.mounted && adsNeeded > 1) Navigator.pop(context);
+                                    
+                                    AdManager.showInterstitialAd(
+                                      context: context,
+                                      onAdDismissed: () async {
+                                        showDialog(
+                                          context: context,
+                                          barrierDismissible: false,
+                                          builder: (dialogCtx) => const Center(child: CircularProgressIndicator(color: AppColors.primaryBlue)),
+                                        );
+                                        
+                                        bool claimed = await vpn.watchAd(tier: tier);
+                                        
+                                        if (context.mounted) Navigator.pop(context); // close loader
+                                        
+                                        if (claimed) {
+                                          if (vpn.selectedServer != null) {
+                                            vpn.connect(vpn.selectedServer!['id']!.toString(), mode: 'standard');
+                                          }
+                                        } else if (isStarterServer && vpn.starterAdsWatched < adsNeeded) {
+                                          playNext(vpn.starterAdsWatched);
+                                        }
+                                      }
+                                    );
+                                  });
+                                }
+                                
+                                playNext(vpn.starterAdsWatched);
                               },
                               onClose: () => vpn.setUpgrade(true),
                             );

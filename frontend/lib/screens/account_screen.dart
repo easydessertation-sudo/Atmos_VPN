@@ -11,6 +11,7 @@ import '../utils/api_service.dart';
 import '../widgets/password_text_field.dart';
 import '../main.dart';
 import '../widgets/app_container.dart';
+import 'package:in_app_review/in_app_review.dart';
 
 class AccountScreen extends StatefulWidget {
   const AccountScreen({super.key});
@@ -677,6 +678,13 @@ class _AccountScreenState extends State<AccountScreen> {
                       () => Navigator.pushNamed(context, '/notifications')),
                   _menuItem('Privacy Settings', Icons.fingerprint_rounded,
                       () => Navigator.pushNamed(context, '/privacy')),
+                  _menuItem('Rate Us', Icons.star_rate_rounded, () async {
+                    final InAppReview inAppReview = InAppReview.instance;
+                    if (await inAppReview.isAvailable()) {
+                      // Note: appStoreId is only needed for iOS. Leaving empty defaults to the current app's ID if configured correctly on iOS.
+                      inAppReview.openStoreListing();
+                    }
+                  }),
                 ],
               ).animate().fadeIn(delay: 500.ms),
               const SizedBox(height: 48),
