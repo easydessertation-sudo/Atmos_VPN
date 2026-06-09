@@ -45,8 +45,6 @@ post_install do |installer|
       if is_resource_bundle
         config.build_settings['GENERATE_INFOPLIST_FILE'] = 'NO'
         config.build_settings.delete('INFOPLIST_KEY_CFBundleExecutable')
-      else
-        config.build_settings['GENERATE_INFOPLIST_FILE'] = 'YES'
       end
     end
   end
