@@ -60,15 +60,24 @@ workflows:
       - name: Build and Archive
         script: |
           set +e
-          # Build the app
+          cd frontend
           flutter build ios --release --no-codesign
           
-          # Archive the workspace
-          xcodebuild archive -workspace ios/Runner.xcworkspace \
-            -scheme Runner \
-            -archivePath build/Runner.xcarchive \
-            -configuration Release \
-            CODE_SIGN_STYLE=Manual > build_log.txt 2>&1
+          echo "Finding WireGuardKitGo to compile libwg-go.a..."
+          WG_GO_DIR=$(find ~/Library/Developer/Xcode/DerivedData -type d -path "*/SourcePackages/checkouts/wireguard-apple/Sources/WireGuardKitGo" 2>/dev/null | head -n 1)
+          if [ -n "$WG_GO_DIR" ]; then
+            echo "Found WireGuardKitGo at $WG_GO_DIR. Running make..."
+            cd "$WG_GO_DIR"
+            if ! command -v go &> /dev/null; then brew install go; fi
+            make
+            mkdir -p $CM_BUILD_DIR/frontend/ios/wg-go
+            cp out/libwg-go.a $CM_BUILD_DIR/frontend/ios/wg-go/libwg-go.a
+            cd $CM_BUILD_DIR/frontend
+          else
+            echo "WARNING: WireGuardKitGo checkout not found!"
+          fi
+          
+          xcodebuild archive -workspace ios/Runner.xcworkspace -scheme Runner -archivePath build/Runner.xcarchive -configuration Release CODE_SIGN_STYLE=Manual > build_log.txt 2>&1
             
           if [ $? -ne 0 ]; then
              echo "==================== LINKER ERROR START ===================="
