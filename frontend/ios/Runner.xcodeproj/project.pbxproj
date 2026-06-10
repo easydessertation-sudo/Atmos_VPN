@@ -10,6 +10,7 @@
 		1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */ = {isa = PBXBuildFile; fileRef = 1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */; };
 		1B8F506C2FD9285800BE8102 /* WireGuardKit in Frameworks */ = {isa = PBXBuildFile; productRef = 1B8F506B2FD9285800BE8102 /* WireGuardKit */; };
 		1B8F508A2FD9434000BE8102 /* WireGuardKit in Frameworks */ = {isa = PBXBuildFile; productRef = 1B8F50892FD9434000BE8102 /* WireGuardKit */; };
+		1B8F508E2FD94F9100BE8102 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74858FAE1ED2DC5600515810 /* AppDelegate.swift */; };
 		1BA89E342FCFF09F00D6033A /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 1BA89E332FCFF09F00D6033A /* GoogleService-Info.plist */; };
 		1BA89E3C2FD007F500D6033A /* NetworkExtension.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1BA89E3B2FD007F500D6033A /* NetworkExtension.framework */; };
 		1BA89E442FD007F500D6033A /* AtmosVPNTunnel.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 1BA89E392FD007F500D6033A /* AtmosVPNTunnel.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -515,6 +516,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				1B8F508E2FD94F9100BE8102 /* AppDelegate.swift in Sources */,
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
