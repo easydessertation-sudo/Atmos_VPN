@@ -1,0 +1,14 @@
+{
+  "pins" : [
+    {
+      "identity" : "wireguard-apple",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/ut360e/wireguard-apple",
+      "state" : {
+        "branch" : "main",
+        "revision" : "4adcb7db230cfea3ffbab9299730afc707cfe457"
+      }
+    }
+  ],
+  "version" : 2
+}
