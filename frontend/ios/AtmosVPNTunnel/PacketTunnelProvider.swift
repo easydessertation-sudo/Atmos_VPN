@@ -33,8 +33,18 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             return
         }
         
-        // 3. Start the WireGuard Adapter
-        adapter.start(tunnelConfiguration: wgConfig) { adapterError in
+        // 3. Parse the WireGuard config string into a TunnelConfiguration
+        let parsedConfig: TunnelConfiguration
+        do {
+            parsedConfig = try TunnelConfiguration(fromWgQuickConfig: wgConfig, called: "AtmosVPN")
+        } catch {
+            NSLog("WireGuardKit error: Failed to parse wgConfig: \(error.localizedDescription)")
+            completionHandler(error)
+            return
+        }
+        
+        // 4. Start the WireGuard Adapter
+        adapter.start(tunnelConfiguration: parsedConfig) { adapterError in
             if let adapterError = adapterError {
                 NSLog("WireGuardKit error: Failed to start adapter: \(adapterError.localizedDescription)")
                 completionHandler(adapterError)
