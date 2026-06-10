@@ -62,12 +62,11 @@ workflows:
           # Build the app
           flutter build ios --release --no-codesign
           
-          # Archive the workspace
           xcodebuild archive -workspace ios/Runner.xcworkspace \
             -scheme Runner \
             -archivePath build/Runner.xcarchive \
             -configuration Release \
-            CODE_SIGN_STYLE=Manual
+            CODE_SIGN_STYLE=Manual | tee build_log.txt
             
       - name: Export IPA
         script: |
@@ -78,6 +77,7 @@ workflows:
 
     artifacts:
       - build/ios/ipa/*.ipa
+      - build_log.txt
 
     publishing:
       app_store_connect:
