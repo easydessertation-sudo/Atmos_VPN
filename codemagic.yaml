@@ -25,12 +25,28 @@ workflows:
           keychain add-certificates
           xcode-project use-profiles --project ios/Runner.xcodeproj
 
-      - name: Build IPA
+      - name: Resolve SPM Dependencies
         script: |
+          xcodebuild -resolvePackageDependencies -workspace ios/Runner.xcworkspace -scheme Runner
+
+      - name: Build and Archive
+        script: |
+          # Build the app
           flutter build ios --release --no-codesign
-          xcode-project build-ipa \
-            --workspace ios/Runner.xcworkspace \
-            --scheme Runner
+          
+          # Archive the workspace
+          xcodebuild archive -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -archivePath build/Runner.xcarchive \
+            -configuration Release \
+            CODE_SIGN_STYLE=Manual
+            
+      - name: Export IPA
+        script: |
+          xcodebuild -exportArchive \
+            -archivePath build/Runner.xcarchive \
+            -exportOptionsPlist ios/ExportOptions.plist \
+            -exportPath build/ios/ipa
 
     artifacts:
       - build/ios/ipa/*.ipa
