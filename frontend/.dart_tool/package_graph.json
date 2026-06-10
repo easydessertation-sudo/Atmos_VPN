@@ -5,7 +5,7 @@
   "packages": [
     {
       "name": "AtmosVPN",
-      "version": "1.0.8+16",
+      "version": "1.0.10+28",
       "dependencies": [
         "app_links",
         "connectivity_plus",
@@ -22,6 +22,7 @@
         "google_sign_in",
         "http",
         "image_picker",
+        "in_app_review",
         "intl",
         "package_info_plus",
         "permission_handler",
@@ -29,7 +30,8 @@
         "shared_preferences",
         "sign_in_with_apple",
         "upgrader",
-        "url_launcher"
+        "url_launcher",
+        "wireguard_flutter"
       ],
       "devDependencies": [
         "flutter_lints",
@@ -59,6 +61,14 @@
         "stream_channel",
         "test_api",
         "vector_math"
+      ]
+    },
+    {
+      "name": "in_app_review",
+      "version": "2.0.12",
+      "dependencies": [
+        "flutter",
+        "in_app_review_platform_interface"
       ]
     },
     {
@@ -220,6 +230,16 @@
       ]
     },
     {
+      "name": "wireguard_flutter",
+      "version": "0.1.3",
+      "dependencies": [
+        "flutter",
+        "path_provider",
+        "plugin_platform_interface",
+        "process_run"
+      ]
+    },
+    {
       "name": "url_launcher",
       "version": "6.3.2",
       "dependencies": [
@@ -336,7 +356,7 @@
     },
     {
       "name": "meta",
-      "version": "1.18.0",
+      "version": "1.17.0",
       "dependencies": []
     },
     {
@@ -398,7 +418,7 @@
     },
     {
       "name": "test_api",
-      "version": "0.7.11",
+      "version": "0.7.10",
       "dependencies": [
         "async",
         "boolean_selector",
@@ -409,6 +429,16 @@
         "stream_channel",
         "string_scanner",
         "term_glyph"
+      ]
+    },
+    {
+      "name": "in_app_review_platform_interface",
+      "version": "2.0.5",
+      "dependencies": [
+        "flutter",
+        "platform",
+        "plugin_platform_interface",
+        "url_launcher"
       ]
     },
     {
@@ -815,6 +845,39 @@
       ]
     },
     {
+      "name": "process_run",
+      "version": "0.14.2",
+      "dependencies": [
+        "args",
+        "collection",
+        "meta",
+        "path",
+        "pub_semver",
+        "string_scanner",
+        "synchronized",
+        "yaml"
+      ]
+    },
+    {
+      "name": "plugin_platform_interface",
+      "version": "2.1.8",
+      "dependencies": [
+        "meta"
+      ]
+    },
+    {
+      "name": "path_provider",
+      "version": "2.1.5",
+      "dependencies": [
+        "flutter",
+        "path_provider_android",
+        "path_provider_foundation",
+        "path_provider_linux",
+        "path_provider_platform_interface",
+        "path_provider_windows"
+      ]
+    },
+    {
       "name": "url_launcher_windows",
       "version": "3.1.5",
       "dependencies": [
@@ -990,18 +1053,6 @@
       ]
     },
     {
-      "name": "path_provider",
-      "version": "2.1.5",
-      "dependencies": [
-        "flutter",
-        "path_provider_android",
-        "path_provider_foundation",
-        "path_provider_linux",
-        "path_provider_platform_interface",
-        "path_provider_windows"
-      ]
-    },
-    {
       "name": "sky_engine",
       "version": "0.0.0",
       "dependencies": []
@@ -1068,6 +1119,11 @@
       ]
     },
     {
+      "name": "platform",
+      "version": "3.1.6",
+      "dependencies": []
+    },
+    {
       "name": "petitparser",
       "version": "7.0.2",
       "dependencies": [
@@ -1087,13 +1143,6 @@
       "version": "0.1.2",
       "dependencies": [
         "ffi"
-      ]
-    },
-    {
-      "name": "plugin_platform_interface",
-      "version": "2.1.8",
-      "dependencies": [
-        "meta"
       ]
     },
     {
@@ -1209,6 +1258,32 @@
       ]
     },
     {
+      "name": "synchronized",
+      "version": "3.4.0+1",
+      "dependencies": []
+    },
+    {
+      "name": "pub_semver",
+      "version": "2.2.0",
+      "dependencies": [
+        "collection"
+      ]
+    },
+    {
+      "name": "args",
+      "version": "2.7.0",
+      "dependencies": []
+    },
+    {
+      "name": "yaml",
+      "version": "3.1.3",
+      "dependencies": [
+        "collection",
+        "source_span",
+        "string_scanner"
+      ]
+    },
+    {
       "name": "path_provider_windows",
       "version": "2.3.0",
       "dependencies": [
@@ -1228,14 +1303,6 @@
       ]
     },
     {
-      "name": "file",
-      "version": "7.0.1",
-      "dependencies": [
-        "meta",
-        "path"
-      ]
-    },
-    {
       "name": "path_provider_linux",
       "version": "2.2.1",
       "dependencies": [
@@ -1245,19 +1312,6 @@
         "path_provider_platform_interface",
         "xdg_directories"
       ]
-    },
-    {
-      "name": "path_parsing",
-      "version": "1.1.0",
-      "dependencies": [
-        "meta",
-        "vector_math"
-      ]
-    },
-    {
-      "name": "args",
-      "version": "2.7.0",
-      "dependencies": []
     },
     {
       "name": "path_provider_foundation",
@@ -1278,13 +1332,24 @@
       ]
     },
     {
-      "name": "vm_service",
-      "version": "15.0.2",
-      "dependencies": []
+      "name": "file",
+      "version": "7.0.1",
+      "dependencies": [
+        "meta",
+        "path"
+      ]
     },
     {
-      "name": "platform",
-      "version": "3.1.6",
+      "name": "path_parsing",
+      "version": "1.1.0",
+      "dependencies": [
+        "meta",
+        "vector_math"
+      ]
+    },
+    {
+      "name": "vm_service",
+      "version": "15.0.2",
       "dependencies": []
     },
     {
@@ -1298,13 +1363,6 @@
         "logging",
         "native_toolchain_c",
         "pub_semver"
-      ]
-    },
-    {
-      "name": "pub_semver",
-      "version": "2.2.0",
-      "dependencies": [
-        "collection"
       ]
     },
     {
@@ -1352,15 +1410,6 @@
         "collection",
         "file",
         "path",
-        "string_scanner"
-      ]
-    },
-    {
-      "name": "yaml",
-      "version": "3.1.3",
-      "dependencies": [
-        "collection",
-        "source_span",
         "string_scanner"
       ]
     }
