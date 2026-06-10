@@ -244,6 +244,9 @@
 				1BA89E3D2FD007F500D6033A /* AtmosVPNTunnel */,
 			);
 			name = AtmosVPNTunnel;
+			packageProductDependencies = (
+				1B8F506B2FD9285800BE8102 /* WireGuardKit */,
+			);
 			productName = AtmosVPNTunnel;
 			productReference = 1BA89E392FD007F500D6033A /* AtmosVPNTunnel.appex */;
 			productType = "com.apple.product-type.app-extension";
