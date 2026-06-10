@@ -27,14 +27,29 @@ workflows:
 
       - name: Resolve SPM Dependencies
         script: |
-          # 1. Clear the corrupted Swift Package Manager caches
-          echo "Clearing SPM and DerivedData caches..."
-          rm -rf ~/Library/Caches/org.swift.swiftpm
-          rm -rf ~/Library/Developer/Xcode/DerivedData
-          rm -rf ios/.build
+          MAX_RETRIES=4
+          count=0
           
-          # 2. Safely resolve the dependencies
-          xcodebuild -resolvePackageDependencies -workspace ios/Runner.xcworkspace -scheme Runner
+          # Xcode 15 SPM Binary Bug Workaround Loop
+          while [ $count -lt $MAX_RETRIES ]; do
+             echo "Clearing SwiftPM artifacts cache..."
+             rm -rf $HOME/Library/Caches/org.swift.swiftpm/artifacts
+             
+             echo "Resolving dependencies (Attempt $((count+1)) of $MAX_RETRIES)..."
+             if xcodebuild -resolvePackageDependencies -workspace ios/Runner.xcworkspace -scheme Runner; then
+                 echo "✅ Successfully resolved all SPM dependencies!"
+                 break
+             fi
+             
+             count=$((count+1))
+             echo "❌ Resolution failed due to Xcode concurrency bug. Retrying in 5 seconds..."
+             sleep 5
+          done
+          
+          if [ $count -eq $MAX_RETRIES ]; then
+             echo "🚨 Failed to resolve dependencies after $MAX_RETRIES attempts."
+             exit 1
+          fi
 
       - name: Build and Archive
         script: |
