@@ -17,13 +17,7 @@ workflows:
         script: flutter pub get
 
       - name: Pod install
-        script: |
-          cd ios
-          # Automatically fix Xcode 16/17 objectVersion bug for CocoaPods
-          sed -i '' 's/objectVersion = 70;/objectVersion = 56;/g' Runner.xcodeproj/project.pbxproj
-          
-          # Now run pod install safely
-          pod install
+        script: cd ios && pod install
 
       - name: Set up code signing
         script: |
@@ -31,70 +25,15 @@ workflows:
           keychain add-certificates
           xcode-project use-profiles --project ios/Runner.xcodeproj
 
-      - name: Resolve SPM Dependencies
+      - name: Build IPA
         script: |
-          MAX_RETRIES=4
-          count=0
-          
-          # Xcode 15 SPM Binary Bug Workaround Loop
-          while [ $count -lt $MAX_RETRIES ]; do
-             echo "Clearing SwiftPM artifacts cache..."
-             rm -rf $HOME/Library/Caches/org.swift.swiftpm/artifacts
-             
-             echo "Resolving dependencies (Attempt $((count+1)) of $MAX_RETRIES)..."
-             if xcodebuild -resolvePackageDependencies -workspace ios/Runner.xcworkspace -scheme Runner; then
-                 echo "✅ Successfully resolved all SPM dependencies!"
-                 break
-             fi
-             
-             count=$((count+1))
-             echo "❌ Resolution failed due to Xcode concurrency bug. Retrying in 5 seconds..."
-             sleep 5
-          done
-          
-          if [ $count -eq $MAX_RETRIES ]; then
-             echo "🚨 Failed to resolve dependencies after $MAX_RETRIES attempts."
-             exit 1
-          fi
-
-      - name: Build and Archive
-        script: |
-          set +e
-          cd frontend
           flutter build ios --release --no-codesign
-          
-          echo "Finding WireGuardKitGo to compile libwg-go.a..."
-          WG_GO_DIR=$(find ~/Library/Developer/Xcode/DerivedData -type d -path "*/SourcePackages/checkouts/wireguard-apple/Sources/WireGuardKitGo" 2>/dev/null | head -n 1)
-          if [ -n "$WG_GO_DIR" ]; then
-            echo "Found WireGuardKitGo at $WG_GO_DIR. Running make..."
-            cd "$WG_GO_DIR"
-            if ! command -v go &> /dev/null; then brew install go; fi
-            make
-            mkdir -p $CM_BUILD_DIR/frontend/ios/wg-go
-            cp out/libwg-go.a $CM_BUILD_DIR/frontend/ios/wg-go/libwg-go.a
-            cd $CM_BUILD_DIR/frontend
-          else
-            echo "WARNING: WireGuardKitGo checkout not found!"
-          fi
-          
-          xcodebuild archive -workspace ios/Runner.xcworkspace -scheme Runner -archivePath build/Runner.xcarchive -configuration Release CODE_SIGN_STYLE=Manual > build_log.txt 2>&1
-            
-          if [ $? -ne 0 ]; then
-             echo "==================== LINKER ERROR START ===================="
-             grep -C 50 "Undefined symbol" build_log.txt || grep -C 50 "duplicate symbol" build_log.txt || tail -n 100 build_log.txt
-             echo "==================== LINKER ERROR END ===================="
-             exit 1
-          fi
-      - name: Export IPA
-        script: |
-          xcodebuild -exportArchive \
-            -archivePath build/Runner.xcarchive \
-            -exportOptionsPlist ios/ExportOptions.plist \
-            -exportPath build/ios/ipa
+          xcode-project build-ipa \
+            --workspace ios/Runner.xcworkspace \
+            --scheme Runner
 
     artifacts:
       - build/ios/ipa/*.ipa
-      - build_log.txt
 
     publishing:
       app_store_connect:
