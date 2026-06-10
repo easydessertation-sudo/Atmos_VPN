@@ -9,8 +9,6 @@
 /* Begin PBXBuildFile section */
 		1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */ = {isa = PBXBuildFile; fileRef = 1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */; };
 		1B8F506C2FD9285800BE8102 /* WireGuardKit in Frameworks */ = {isa = PBXBuildFile; productRef = 1B8F506B2FD9285800BE8102 /* WireGuardKit */; };
-		1B8F506F2FD9285800BE8102 /* WireGuardKitGo in Frameworks */ = {isa = PBXBuildFile; productRef = 1B8F506D2FD9285800BE8102 /* WireGuardKitGo */; };
-		1B8F50702FD9285800BE8102 /* WireGuardKitC in Frameworks */ = {isa = PBXBuildFile; productRef = 1B8F506E2FD9285800BE8102 /* WireGuardKitC */; };
 		1B8F508E2FD94F9100BE8102 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74858FAE1ED2DC5600515810 /* AppDelegate.swift */; };
 		1BA89E342FCFF09F00D6033A /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 1BA89E332FCFF09F00D6033A /* GoogleService-Info.plist */; };
 		1BA89E3C2FD007F500D6033A /* NetworkExtension.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1BA89E3B2FD007F500D6033A /* NetworkExtension.framework */; };
@@ -118,8 +116,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				1B8F506C2FD9285800BE8102 /* WireGuardKit in Frameworks */,
-				1B8F506F2FD9285800BE8102 /* WireGuardKitGo in Frameworks */,
-				1B8F50702FD9285800BE8102 /* WireGuardKitC in Frameworks */,
 				1BA89E3C2FD007F500D6033A /* NetworkExtension.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -250,8 +246,6 @@
 			name = AtmosVPNTunnel;
 			packageProductDependencies = (
 				1B8F506B2FD9285800BE8102 /* WireGuardKit */,
-				1B8F506D2FD9285800BE8102 /* WireGuardKitGo */,
-				1B8F506E2FD9285800BE8102 /* WireGuardKitC */,
 			);
 			productName = AtmosVPNTunnel;
 			productReference = 1BA89E392FD007F500D6033A /* AtmosVPNTunnel.appex */;
@@ -301,8 +295,6 @@
 			packageProductDependencies = (
 				78A3181F2AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage */,
 				1B8F506B2FD9285800BE8102 /* WireGuardKit */,
-				1B8F506D2FD9285800BE8102 /* WireGuardKitGo */,
-				1B8F506E2FD9285800BE8102 /* WireGuardKitC */,
 			);
 			productName = Runner;
 			productReference = 97C146EE1CF9000F007C117D /* Runner.app */;
@@ -1059,16 +1051,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 1B8F506A2FD9285800BE8102 /* XCRemoteSwiftPackageReference "wireguard-apple" */;
 			productName = WireGuardKit;
-		};
-		1B8F506D2FD9285800BE8102 /* WireGuardKitGo */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 1B8F506A2FD9285800BE8102 /* XCRemoteSwiftPackageReference "wireguard-apple" */;
-			productName = WireGuardKitGo;
-		};
-		1B8F506E2FD9285800BE8102 /* WireGuardKitC */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 1B8F506A2FD9285800BE8102 /* XCRemoteSwiftPackageReference "wireguard-apple" */;
-			productName = WireGuardKitC;
 		};
 		78A3181F2AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage */ = {
 			isa = XCSwiftPackageProductDependency;
