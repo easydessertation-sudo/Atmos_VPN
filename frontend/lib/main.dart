@@ -635,7 +635,14 @@ class VPNProvider with ChangeNotifier {
           if (_connectingTicks >= 8) {
              _isConnected = false;
              _status = 'Connection Failed';
-             _lastError = 'Connection timed out while waiting for tunnel to establish.';
+             
+             // Print exception error in that time out section so we can find the right error
+             final errorMsg = nativeError != null && nativeError.isNotEmpty 
+                 ? nativeError 
+                 : 'Tunnel failed to establish (No native error provided by OS)';
+             print('Exception error in connection timeout section: $errorMsg');
+             
+             _lastError = 'Connection timed out while waiting for tunnel to establish.\nError: $errorMsg';
              _connectingTicks = 0;
              notifyListeners();
           }
@@ -1385,14 +1392,15 @@ class VPNProvider with ChangeNotifier {
               _isConnected = false;
             }
             notifyListeners();
-          } on Exception catch (e) {
+          } on Exception catch (e, stacktrace) {
             final msg = e.toString();
+            print('Exception error in VpnService.connect: $msg\n$stacktrace');
             if (msg.contains('permission') || msg.contains('denied')) {
               _status = 'Permission Denied';
               _lastError = 'VPN permission is required. Please tap Connect and approve the VPN permission dialog when it appears.';
             } else {
               _status = 'Disconnected';
-              _lastError = 'Failed to start VPN tunnel. Please try again.';
+              _lastError = 'Failed to start VPN tunnel. Please try again.\nError: $msg';
             }
             _isConnected = false;
             notifyListeners();
@@ -1428,9 +1436,11 @@ class VPNProvider with ChangeNotifier {
         _isConnected = false;
         notifyListeners();
       }
-    } catch (e) {
+    } catch (e, stacktrace) {
       _status = 'Connection Failed';
       String errorText = e.toString();
+      
+      print('Exception error in main connect block: $errorText\n$stacktrace');
       
       // Sanitize ugly system/network errors so they don't show on the UI
       if (errorText.contains('errno = 103') || errorText.contains('Software caused connection abort')) {
