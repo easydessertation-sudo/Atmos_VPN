@@ -301,6 +301,8 @@
 			packageProductDependencies = (
 				78A3181F2AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage */,
 				1B8F506B2FD9285800BE8102 /* WireGuardKit */,
+				1B8F506D2FD9285800BE8102 /* WireGuardKitGo */,
+				1B8F506E2FD9285800BE8102 /* WireGuardKitC */,
 			);
 			productName = Runner;
 			productReference = 97C146EE1CF9000F007C117D /* Runner.app */;
