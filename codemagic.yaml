@@ -59,15 +59,23 @@ workflows:
 
       - name: Build and Archive
         script: |
+          set +e
           # Build the app
           flutter build ios --release --no-codesign
           
+          # Archive the workspace
           xcodebuild archive -workspace ios/Runner.xcworkspace \
             -scheme Runner \
             -archivePath build/Runner.xcarchive \
             -configuration Release \
-            CODE_SIGN_STYLE=Manual | tee build_log.txt
+            CODE_SIGN_STYLE=Manual > build_log.txt 2>&1
             
+          if [ $? -ne 0 ]; then
+             echo "==================== LINKER ERROR START ===================="
+             grep -C 50 "Undefined symbol" build_log.txt || grep -C 50 "duplicate symbol" build_log.txt || tail -n 100 build_log.txt
+             echo "==================== LINKER ERROR END ===================="
+             exit 1
+          fi
       - name: Export IPA
         script: |
           xcodebuild -exportArchive \
