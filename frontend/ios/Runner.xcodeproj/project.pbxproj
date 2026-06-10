@@ -98,7 +98,7 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		1BA89E452FD007F500D6033A /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+		1BA89E452FD007F500D6033A = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
@@ -108,7 +108,7 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		1BA89E3D2FD007F500D6033A /* AtmosVPNTunnel */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (1BA89E452FD007F500D6033A /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = AtmosVPNTunnel; sourceTree = "<group>"; };
+		1BA89E3D2FD007F500D6033A /* AtmosVPNTunnel */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (1BA89E452FD007F500D6033A, ); explicitFileTypes = {}; explicitFolders = (); path = AtmosVPNTunnel; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
