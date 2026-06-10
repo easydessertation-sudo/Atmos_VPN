@@ -27,6 +27,13 @@ workflows:
 
       - name: Resolve SPM Dependencies
         script: |
+          # 1. Clear the corrupted Swift Package Manager caches
+          echo "Clearing SPM and DerivedData caches..."
+          rm -rf ~/Library/Caches/org.swift.swiftpm
+          rm -rf ~/Library/Developer/Xcode/DerivedData
+          rm -rf ios/.build
+          
+          # 2. Safely resolve the dependencies
           xcodebuild -resolvePackageDependencies -workspace ios/Runner.xcworkspace -scheme Runner
 
       - name: Build and Archive
