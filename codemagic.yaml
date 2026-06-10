@@ -17,7 +17,13 @@ workflows:
         script: flutter pub get
 
       - name: Pod install
-        script: cd ios && pod install
+        script: |
+          cd ios
+          # Automatically fix Xcode 16/17 objectVersion bug for CocoaPods
+          sed -i '' 's/objectVersion = 70;/objectVersion = 56;/g' Runner.xcodeproj/project.pbxproj
+          
+          # Now run pod install safely
+          pod install
 
       - name: Set up code signing
         script: |
