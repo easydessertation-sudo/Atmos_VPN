@@ -6,8 +6,12 @@ import 'package:flutter/foundation.dart';
 class AdManager {
   static const String appId = 'ca-app-pub-4377728206732134~7527582947';
   
+  // Temporarily force true for TestFlight testing
+  // NOTE: Make sure to change useTestAds back to false before your real App Store release!
+  static const bool useTestAds = true;
+
   static String get appOpenAdUnitId {
-    if (kDebugMode) {
+    if (kDebugMode || useTestAds) {
       return Platform.isAndroid
           ? 'ca-app-pub-3940256099942544/9257395921'
           : 'ca-app-pub-3940256099942544/5533782606'; // iOS test ID
@@ -22,7 +26,7 @@ class AdManager {
   }
 
   static String get bannerAdUnitId {
-    if (kDebugMode) {
+    if (kDebugMode || useTestAds) {
       return Platform.isAndroid
           ? 'ca-app-pub-3940256099942544/6300978111'
           : 'ca-app-pub-3940256099942544/2934735716'; // iOS test ID
@@ -37,7 +41,7 @@ class AdManager {
   }
 
   static String get interstitialAdUnitId {
-    if (kDebugMode) {
+    if (kDebugMode || useTestAds) {
       return Platform.isAndroid
           ? 'ca-app-pub-3940256099942544/1033173712'
           : 'ca-app-pub-3940256099942544/4411468910'; // iOS test ID
