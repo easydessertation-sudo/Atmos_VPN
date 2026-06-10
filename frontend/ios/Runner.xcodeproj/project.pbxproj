@@ -3,11 +3,10 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 55;
+	objectVersion = 70;
 	objects = {
 
 /* Begin PBXBuildFile section */
-		113447F783597057621626FB /* String+ArrayConversion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73EC49C78EDF604B300C378C /* String+ArrayConversion.swift */; };
 		1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */ = {isa = PBXBuildFile; fileRef = 1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */; };
 		1B8F506C2FD9285800BE8102 /* WireGuardKit in Frameworks */ = {isa = PBXBuildFile; productRef = 1B8F506B2FD9285800BE8102 /* WireGuardKit */; };
 		1BA89E342FCFF09F00D6033A /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 1BA89E332FCFF09F00D6033A /* GoogleService-Info.plist */; };
@@ -23,7 +22,6 @@
 		97C146FC1CF9000F007C117D /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FA1CF9000F007C117D /* Main.storyboard */; };
 		97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FD1CF9000F007C117D /* Assets.xcassets */; };
 		97C147011CF9000F007C117D /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */; };
-		D0A74FC7840C1C608D60CC23 /* TunnelConfiguration+WgQuickConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72954BDCA9BB3E767AE22A2C /* TunnelConfiguration+WgQuickConfig.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -80,8 +78,6 @@
 		331C807B294A618700263BE5 /* RunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunnerTests.swift; sourceTree = "<group>"; };
 		331C8081294A63A400263BE5 /* RunnerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RunnerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = AppFrameworkInfo.plist; path = Flutter/AppFrameworkInfo.plist; sourceTree = "<group>"; };
-		72954BDCA9BB3E767AE22A2C /* TunnelConfiguration+WgQuickConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "TunnelConfiguration+WgQuickConfig.swift"; path = "ios/AtmosVPNTunnel/TunnelConfiguration+WgQuickConfig.swift"; sourceTree = SOURCE_ROOT; };
-		73EC49C78EDF604B300C378C /* String+ArrayConversion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "String+ArrayConversion.swift"; path = "ios/AtmosVPNTunnel/String+ArrayConversion.swift"; sourceTree = SOURCE_ROOT; };
 		74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Runner-Bridging-Header.h"; sourceTree = "<group>"; };
 		74858FAE1ED2DC5600515810 /* AppDelegate.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
@@ -102,7 +98,7 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		1BA89E452FD007F500D6033A = {
+		1BA89E452FD007F500D6033A /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
@@ -112,7 +108,7 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		1BA89E3D2FD007F500D6033A /* AtmosVPNTunnel */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (1BA89E452FD007F500D6033A, ); explicitFileTypes = {}; explicitFolders = (); path = AtmosVPNTunnel; sourceTree = "<group>"; };
+		1BA89E3D2FD007F500D6033A /* AtmosVPNTunnel */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (1BA89E452FD007F500D6033A /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = AtmosVPNTunnel; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -185,8 +181,6 @@
 				97C146EF1CF9000F007C117D /* Products */,
 				331C8082294A63A400263BE5 /* RunnerTests */,
 				FDB7A01A068BD79C7850EA6B /* Pods */,
-				72954BDCA9BB3E767AE22A2C /* TunnelConfiguration+WgQuickConfig.swift */,
-				73EC49C78EDF604B300C378C /* String+ArrayConversion.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -339,7 +333,6 @@
 			mainGroup = 97C146E51CF9000F007C117D;
 			packageReferences = (
 				781AD8BC2B33823900A9FFBB /* XCLocalSwiftPackageReference "Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage" */,
-				1B8F506A2FD9285800BE8102 /* XCRemoteSwiftPackageReference "wireguard-apple" */,
 			);
 			productRefGroup = 97C146EF1CF9000F007C117D /* Products */;
 			projectDirPath = "";
@@ -506,8 +499,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				D0A74FC7840C1C608D60CC23 /* TunnelConfiguration+WgQuickConfig.swift in Sources */,
-				113447F783597057621626FB /* String+ArrayConversion.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
