@@ -27,9 +27,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         }
         
         // 2. Extract the raw WireGuard config string we passed in AppDelegate.swift
-        guard let wgConfig = tunnelConfiguration["wgConfig"] as? String else {
-            NSLog("WireGuardKit error: Missing wgConfig in provider configuration")
-            completionHandler(NSError(domain: "AtmosVPN", code: 2, userInfo: [NSLocalizedDescriptionKey: "Missing wgConfig"]))
+        guard let wgConfig = tunnelConfiguration["wgQuickConfig"] as? String else {
+            NSLog("WireGuardKit error: Missing wgQuickConfig in provider configuration")
+            completionHandler(NSError(domain: "AtmosVPN", code: 2, userInfo: [NSLocalizedDescriptionKey: "Missing wgQuickConfig"]))
             return
         }
         
